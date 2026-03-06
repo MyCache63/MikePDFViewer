@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @State private var pdfURL: URL?
+    @Binding var pdfURL: URL?
     @State private var showFilePicker = false
 
     var body: some View {
@@ -55,5 +55,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(pdfURL: .constant(nil))
 }

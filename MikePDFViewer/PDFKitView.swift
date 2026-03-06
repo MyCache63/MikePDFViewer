@@ -9,13 +9,22 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.document = PDFDocument(url: url)
+        loadDocument(into: pdfView, from: url)
         return pdfView
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
         if pdfView.document?.documentURL != url {
-            pdfView.document = PDFDocument(url: url)
+            loadDocument(into: pdfView, from: url)
+        }
+    }
+
+    private func loadDocument(into pdfView: PDFView, from url: URL) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let document = PDFDocument(url: url)
+            DispatchQueue.main.async {
+                pdfView.document = document
+            }
         }
     }
 }
