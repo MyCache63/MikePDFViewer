@@ -1,9 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 struct ContentView: View {
     @Binding var pdfURL: URL?
-    @State private var showFilePicker = false
 
     var body: some View {
         Group {
@@ -18,7 +18,7 @@ struct ContentView: View {
                         .font(.title2)
                         .foregroundStyle(.secondary)
                     Button("Open PDF") {
-                        showFilePicker = true
+                        openPDF()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -29,27 +29,22 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button {
-                    showFilePicker = true
+                    openPDF()
                 } label: {
                     Image(systemName: "folder")
                 }
             }
         }
-        .fileImporter(
-            isPresented: $showFilePicker,
-            allowedContentTypes: [UTType.pdf],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    if url.startAccessingSecurityScopedResource() {
-                        pdfURL = url
-                    }
-                }
-            case .failure(let error):
-                print("File picker error: \(error.localizedDescription)")
-            }
+    }
+
+    private func openPDF() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType.pdf]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.treatsFilePackagesAsDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            pdfURL = url
         }
     }
 }
