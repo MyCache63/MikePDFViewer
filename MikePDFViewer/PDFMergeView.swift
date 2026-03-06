@@ -15,6 +15,10 @@ struct PDFMergeView: View {
                     .font(.title2.bold())
                 Spacer()
                 HStack(spacing: 12) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .keyboardShortcut(.escape, modifiers: [])
                     Button("Add PDFs...") {
                         addPDFs()
                     }
