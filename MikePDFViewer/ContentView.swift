@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showSearch = false
     @State private var showMergeSheet = false
     @State private var sidebarVisible = true
+    @State private var showOCRSheet = false
 
     var body: some View {
         NavigationSplitView {
@@ -65,6 +66,14 @@ struct ContentView: View {
                 .help("Search (Cmd+F)")
 
                 Button {
+                    showOCRSheet = true
+                } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                }
+                .help("OCR Document")
+                .disabled(pdfDocument == nil)
+
+                Button {
                     showMergeSheet = true
                 } label: {
                     Image(systemName: "doc.on.doc")
@@ -89,9 +98,16 @@ struct ContentView: View {
             PDFMergeView()
                 .frame(minWidth: 800, minHeight: 500)
         }
+        .sheet(isPresented: $showOCRSheet) {
+            if let document = pdfDocument {
+                OCRView(document: document)
+                    .frame(minWidth: 800, minHeight: 600)
+            }
+        }
         .background(KeyboardHandler(
             onFind: { showSearch.toggle(); if !showSearch { searchText = "" } },
-            onEscape: { showSearch = false; searchText = "" }
+            onEscape: { showSearch = false; searchText = "" },
+            onOCR: { if pdfDocument != nil { showOCRSheet = true } }
         ))
     }
 
@@ -195,29 +211,36 @@ struct ContentView: View {
 struct KeyboardHandler: NSViewRepresentable {
     let onFind: () -> Void
     let onEscape: () -> Void
+    let onOCR: () -> Void
 
     func makeNSView(context: Context) -> KeyCatcherView {
         let view = KeyCatcherView()
         view.onFind = onFind
         view.onEscape = onEscape
+        view.onOCR = onOCR
         return view
     }
 
     func updateNSView(_ nsView: KeyCatcherView, context: Context) {
         nsView.onFind = onFind
         nsView.onEscape = onEscape
+        nsView.onOCR = onOCR
     }
 }
 
 class KeyCatcherView: NSView {
     var onFind: (() -> Void)?
     var onEscape: (() -> Void)?
+    var onOCR: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "f" {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if mods == [.command] && event.charactersIgnoringModifiers == "f" {
             onFind?()
+        } else if mods == [.command, .shift] && event.charactersIgnoringModifiers == "R" {
+            onOCR?()
         } else if event.keyCode == 53 {
             onEscape?()
         } else {

@@ -5,3 +5,9 @@ xcuserdata/
 DerivedData/
 build/
 logs/
+# OCR test files
+test_ocr.py
+test_llm_ocr.py
+ocr_test_output.txt
+ocr_comparison/
+*.pdf
