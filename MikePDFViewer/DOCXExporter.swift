@@ -3,47 +3,97 @@ import Foundation
 struct DOCXExporter {
 
     static func export(pages: [OCRPageResult]) throws -> Data {
-        // Split into cover pages and content pages
         let coverPages = pages.filter { $0.isCoverPage }
         let contentPages = pages.filter { !$0.isCoverPage }
 
-        // Build document XML
-        let documentXML = buildDocumentXML(coverPages: coverPages, contentPages: contentPages)
-        let stylesXML = buildStylesXML()
-        let contentTypesXML = buildContentTypesXML()
-        let relsXML = buildRelsXML()
-        let documentRelsXML = buildDocumentRelsXML()
+        // Collect all footnotes across pages for the footnotes.xml file
+        var allFootnotes: [String] = []
+        for page in pages {
+            allFootnotes.append(contentsOf: extractFootnotes(from: page.text))
+        }
 
-        // Package as ZIP (DOCX is a ZIP archive)
+        let documentXML = buildDocumentXML(
+            coverPages: coverPages,
+            contentPages: contentPages,
+            footnoteCount: allFootnotes.count
+        )
+        let footnotesXML = buildFootnotesXML(footnotes: allFootnotes)
+        let stylesXML = buildStylesXML()
+        let contentTypesXML = buildContentTypesXML(hasFootnotes: !allFootnotes.isEmpty)
+        let relsXML = buildRelsXML()
+        let documentRelsXML = buildDocumentRelsXML(hasFootnotes: !allFootnotes.isEmpty)
+
         var zip = ZIPWriter()
         zip.addEntry(name: "[Content_Types].xml", data: contentTypesXML.data(using: .utf8)!)
         zip.addEntry(name: "_rels/.rels", data: relsXML.data(using: .utf8)!)
         zip.addEntry(name: "word/document.xml", data: documentXML.data(using: .utf8)!)
         zip.addEntry(name: "word/styles.xml", data: stylesXML.data(using: .utf8)!)
         zip.addEntry(name: "word/_rels/document.xml.rels", data: documentRelsXML.data(using: .utf8)!)
+        if !allFootnotes.isEmpty {
+            zip.addEntry(name: "word/footnotes.xml", data: footnotesXML.data(using: .utf8)!)
+        }
 
         return zip.write()
     }
 
+    // MARK: - Footnote Extraction
+
+    private static func extractFootnotes(from text: String) -> [String] {
+        var footnotes: [String] = []
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[Footnote]:") {
+                let note = trimmed.replacingOccurrences(of: "[Footnote]:", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+                if !note.isEmpty {
+                    footnotes.append(note)
+                }
+            }
+        }
+        return footnotes
+    }
+
+    private static func stripFootnoteLines(from text: String) -> String {
+        text.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("[Footnote]:") }
+            .joined(separator: "\n")
+    }
+
     // MARK: - Document XML
 
-    private static func buildDocumentXML(coverPages: [OCRPageResult], contentPages: [OCRPageResult]) -> String {
+    private static func buildDocumentXML(
+        coverPages: [OCRPageResult],
+        contentPages: [OCRPageResult],
+        footnoteCount: Int
+    ) -> String {
         var body = ""
+        // Track which footnote we're on (IDs start at 1; 0 is reserved for separator)
+        var footnoteIndex = 1
 
         // Cover page content (single column, centered)
         for page in coverPages {
-            let blocks = parseMarkdown(page.text)
+            let cleanText = stripFootnoteLines(from: page.text)
+            let pageFootnotes = extractFootnotes(from: page.text)
+            let blocks = parseMarkdown(cleanText)
             for block in blocks {
                 switch block {
                 case .heading(let text):
                     body += paragraph(text: text, style: "Title", alignment: "center", bold: true, fontSize: 32)
                 case .body(let text):
                     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
-                    body += paragraph(text: text, alignment: "center", fontSize: 24)
+                    // Check if this paragraph should get a footnote reference
+                    let fnRef = findFootnoteAnchor(in: text, footnotes: pageFootnotes, startIndex: footnoteIndex)
+                    if let ref = fnRef {
+                        body += paragraphWithFootnote(text: text, footnoteId: ref.id, alignment: "center", fontSize: 24)
+                        footnoteIndex = ref.nextIndex
+                    } else {
+                        body += paragraph(text: text, alignment: "center", fontSize: 24)
+                    }
                 case .figure(let text):
                     body += paragraph(text: text, alignment: "center", italic: true, fontSize: 20)
                 }
             }
+            footnoteIndex += pageFootnotes.count - max(0, footnoteIndex - footnoteIndex) // advance past any unused
         }
 
         // Section break: end single-column, start two-column
@@ -59,17 +109,36 @@ struct DOCXExporter {
 
         // Content pages (two column)
         for page in contentPages {
-            let blocks = parseMarkdown(page.text)
+            let cleanText = stripFootnoteLines(from: page.text)
+            let pageFootnotes = extractFootnotes(from: page.text)
+            let blocks = parseMarkdown(cleanText)
+            var pageFootnoteOffset = 0
+
             for block in blocks {
                 switch block {
                 case .heading(let text):
                     body += paragraph(text: text, style: "Heading2", bold: true, fontSize: 22)
                 case .body(let text):
                     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+                    // Insert footnote ref if this paragraph contains the anchor marker
+                    if pageFootnoteOffset < pageFootnotes.count {
+                        let fn = pageFootnotes[pageFootnoteOffset]
+                        if textContainsAnchor(text, for: fn) {
+                            body += paragraphWithFootnote(text: text, footnoteId: footnoteIndex, fontSize: 20)
+                            footnoteIndex += 1
+                            pageFootnoteOffset += 1
+                            continue
+                        }
+                    }
                     body += paragraph(text: text, fontSize: 20)
                 case .figure(let text):
                     body += paragraph(text: text, italic: true, fontSize: 20)
                 }
+            }
+            // If footnotes weren't matched to a paragraph, attach them to the last paragraph
+            while pageFootnoteOffset < pageFootnotes.count {
+                footnoteIndex += 1
+                pageFootnoteOffset += 1
             }
         }
 
@@ -121,6 +190,86 @@ struct DOCXExporter {
         """
     }
 
+    // MARK: - Footnote Anchor Matching
+
+    private struct FootnoteRef {
+        let id: Int
+        let nextIndex: Int
+    }
+
+    private static func findFootnoteAnchor(in text: String, footnotes: [String], startIndex: Int) -> FootnoteRef? {
+        for (i, fn) in footnotes.enumerated() {
+            if textContainsAnchor(text, for: fn) {
+                return FootnoteRef(id: startIndex + i, nextIndex: startIndex + i + 1)
+            }
+        }
+        return nil
+    }
+
+    private static func textContainsAnchor(_ text: String, for footnote: String) -> Bool {
+        // Match footnote markers: *, †, ‡, or the first word of the footnote
+        // For "*Member AIAA" → look for "*" or "III*" in the text
+        if footnote.hasPrefix("*") {
+            return text.contains("*")
+        }
+        if footnote.hasPrefix("†") {
+            return text.contains("†")
+        }
+        if footnote.hasPrefix("‡") {
+            return text.contains("‡")
+        }
+        // For numbered footnotes like "1. Some note" → look for superscript-style ref
+        let firstWord = footnote.components(separatedBy: .whitespaces).first ?? ""
+        if let num = Int(firstWord.trimmingCharacters(in: CharacterSet(charactersIn: ".)"))) {
+            return text.contains("[\(num)]")
+        }
+        return false
+    }
+
+    // MARK: - Footnotes XML
+
+    private static func buildFootnotesXML(footnotes: [String]) -> String {
+        var entries = ""
+
+        // Footnote 0: the separator (required by OOXML spec)
+        entries += """
+        <w:footnote w:type="separator" w:id="-1">
+            <w:p><w:r><w:separator/></w:r></w:p>
+        </w:footnote>
+        <w:footnote w:type="continuationSeparator" w:id="0">
+            <w:p><w:r><w:continuationSeparator/></w:r></w:p>
+        </w:footnote>
+        """
+
+        // Actual footnotes (IDs start at 1)
+        for (i, note) in footnotes.enumerated() {
+            let escaped = xmlEscape(note)
+            entries += """
+            <w:footnote w:id="\(i + 1)">
+                <w:p>
+                    <w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr>
+                    <w:r>
+                        <w:rPr><w:rStyle w:val="FootnoteReference"/><w:vertAlign w:val="superscript"/></w:rPr>
+                        <w:footnoteRef/>
+                    </w:r>
+                    <w:r>
+                        <w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>
+                        <w:t xml:space="preserve"> \(escaped)</w:t>
+                    </w:r>
+                </w:p>
+            </w:footnote>
+            """
+        }
+
+        return """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                     xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+            \(entries)
+        </w:footnotes>
+        """
+    }
+
     // MARK: - Markdown Parsing
 
     private enum TextBlock {
@@ -137,7 +286,6 @@ struct DOCXExporter {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
             if trimmed.hasPrefix("## ") {
-                // Flush current paragraph
                 if !currentParagraph.isEmpty {
                     blocks.append(.body(currentParagraph.trimmingCharacters(in: .whitespacesAndNewlines)))
                     currentParagraph = ""
@@ -203,6 +351,31 @@ struct DOCXExporter {
         return "<w:p>\(pPr)<w:r>\(rPr)<w:t xml:space=\"preserve\">\(escaped)</w:t></w:r></w:p>\n"
     }
 
+    private static func paragraphWithFootnote(
+        text: String,
+        footnoteId: Int,
+        style: String? = nil,
+        alignment: String? = nil,
+        fontSize: Int = 20
+    ) -> String {
+        let escaped = xmlEscape(text)
+
+        var pPr = ""
+        if style != nil || alignment != nil {
+            pPr += "<w:pPr>"
+            if let style = style { pPr += "<w:pStyle w:val=\"\(style)\"/>" }
+            if let alignment = alignment { pPr += "<w:jc w:val=\"\(alignment)\"/>" }
+            pPr += "</w:pPr>"
+        }
+
+        let rPr = "<w:rPr><w:sz w:val=\"\(fontSize)\"/><w:szCs w:val=\"\(fontSize)\"/></w:rPr>"
+        let fnRef = """
+        <w:r><w:rPr><w:rStyle w:val="FootnoteReference"/><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="\(footnoteId)"/></w:r>
+        """
+
+        return "<w:p>\(pPr)<w:r>\(rPr)<w:t xml:space=\"preserve\">\(escaped)</w:t></w:r>\(fnRef)</w:p>\n"
+    }
+
     private static func xmlEscape(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
@@ -246,18 +419,40 @@ struct DOCXExporter {
                     <w:szCs w:val="22"/>
                 </w:rPr>
             </w:style>
+            <w:style w:type="paragraph" w:styleId="FootnoteText">
+                <w:name w:val="footnote text"/>
+                <w:basedOn w:val="Normal"/>
+                <w:rPr>
+                    <w:sz w:val="16"/>
+                    <w:szCs w:val="16"/>
+                </w:rPr>
+            </w:style>
+            <w:style w:type="character" w:styleId="FootnoteReference">
+                <w:name w:val="footnote reference"/>
+                <w:rPr>
+                    <w:vertAlign w:val="superscript"/>
+                </w:rPr>
+            </w:style>
         </w:styles>
         """
     }
 
-    private static func buildContentTypesXML() -> String {
+    private static func buildContentTypesXML(hasFootnotes: Bool) -> String {
+        var overrides = """
+            <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+            <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
         """
+        if hasFootnotes {
+            overrides += """
+                <Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>
+            """
+        }
+        return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
             <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
             <Default Extension="xml" ContentType="application/xml"/>
-            <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-            <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+            \(overrides)
         </Types>
         """
     }
@@ -271,11 +466,19 @@ struct DOCXExporter {
         """
     }
 
-    private static func buildDocumentRelsXML() -> String {
+    private static func buildDocumentRelsXML(hasFootnotes: Bool) -> String {
+        var rels = """
+            <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
         """
+        if hasFootnotes {
+            rels += """
+                <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>
+            """
+        }
+        return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-            <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+            \(rels)
         </Relationships>
         """
     }
@@ -301,37 +504,37 @@ struct ZIPWriter {
             let crc = crc32(entry.data)
 
             // Local file header
-            appendUInt32(&archive, 0x04034B50)   // signature
-            appendUInt16(&archive, 20)            // version needed
-            appendUInt16(&archive, 0)             // flags
-            appendUInt16(&archive, 0)             // compression: stored
-            appendUInt16(&archive, 0)             // mod time
-            appendUInt16(&archive, 0)             // mod date
-            appendUInt32(&archive, crc)           // crc32
-            appendUInt32(&archive, UInt32(entry.data.count))  // compressed size
-            appendUInt32(&archive, UInt32(entry.data.count))  // uncompressed size
-            appendUInt16(&archive, UInt16(nameData.count))    // name length
-            appendUInt16(&archive, 0)             // extra field length
+            appendUInt32(&archive, 0x04034B50)
+            appendUInt16(&archive, 20)
+            appendUInt16(&archive, 0)
+            appendUInt16(&archive, 0)             // stored (no compression)
+            appendUInt16(&archive, 0)
+            appendUInt16(&archive, 0)
+            appendUInt32(&archive, crc)
+            appendUInt32(&archive, UInt32(entry.data.count))
+            appendUInt32(&archive, UInt32(entry.data.count))
+            appendUInt16(&archive, UInt16(nameData.count))
+            appendUInt16(&archive, 0)
             archive.append(nameData)
             archive.append(entry.data)
 
             // Central directory entry
-            appendUInt32(&centralDirectory, 0x02014B50) // signature
-            appendUInt16(&centralDirectory, 20)          // version made by
-            appendUInt16(&centralDirectory, 20)          // version needed
-            appendUInt16(&centralDirectory, 0)           // flags
-            appendUInt16(&centralDirectory, 0)           // compression
-            appendUInt16(&centralDirectory, 0)           // mod time
-            appendUInt16(&centralDirectory, 0)           // mod date
+            appendUInt32(&centralDirectory, 0x02014B50)
+            appendUInt16(&centralDirectory, 20)
+            appendUInt16(&centralDirectory, 20)
+            appendUInt16(&centralDirectory, 0)
+            appendUInt16(&centralDirectory, 0)
+            appendUInt16(&centralDirectory, 0)
+            appendUInt16(&centralDirectory, 0)
             appendUInt32(&centralDirectory, crc)
             appendUInt32(&centralDirectory, UInt32(entry.data.count))
             appendUInt32(&centralDirectory, UInt32(entry.data.count))
             appendUInt16(&centralDirectory, UInt16(nameData.count))
-            appendUInt16(&centralDirectory, 0)           // extra length
-            appendUInt16(&centralDirectory, 0)           // comment length
-            appendUInt16(&centralDirectory, 0)           // disk start
-            appendUInt16(&centralDirectory, 0)           // internal attrs
-            appendUInt32(&centralDirectory, 0)           // external attrs
+            appendUInt16(&centralDirectory, 0)
+            appendUInt16(&centralDirectory, 0)
+            appendUInt16(&centralDirectory, 0)
+            appendUInt16(&centralDirectory, 0)
+            appendUInt32(&centralDirectory, 0)
             appendUInt32(&centralDirectory, offsets.last!)
             centralDirectory.append(nameData)
         }
@@ -341,13 +544,13 @@ struct ZIPWriter {
 
         // End of central directory
         appendUInt32(&archive, 0x06054B50)
-        appendUInt16(&archive, 0)                        // disk number
-        appendUInt16(&archive, 0)                        // central dir disk
+        appendUInt16(&archive, 0)
+        appendUInt16(&archive, 0)
         appendUInt16(&archive, UInt16(entries.count))
         appendUInt16(&archive, UInt16(entries.count))
         appendUInt32(&archive, UInt32(centralDirectory.count))
         appendUInt32(&archive, centralDirOffset)
-        appendUInt16(&archive, 0)                        // comment length
+        appendUInt16(&archive, 0)
 
         return archive
     }

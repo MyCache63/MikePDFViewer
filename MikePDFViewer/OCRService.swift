@@ -38,6 +38,8 @@ class OCRService: ObservableObject {
     7. Output ONLY the transcribed text. No commentary, no descriptions of images or figures.
     8. If there are figures or diagrams, note them as [Figure X] on their own line.
     9. Be extremely accurate — every word matters.
+    10. FOOTNOTES: Any text at the bottom of a column that is a footnote, author affiliation note, or annotation (often marked with *, †, ‡, or superscript numbers, and visually separated from body text by a line or whitespace) must be extracted separately. Place all footnotes at the END of the page output, each on its own line prefixed with [Footnote]: — for example: [Footnote]: *Member AIAA
+    11. PAGE NUMBERS: Do NOT include standalone page numbers (like "1", "2", "3" at the bottom of the page) in the output. Omit them entirely.
     """
 
     func processDocument(_ document: PDFDocument) async {
@@ -73,11 +75,13 @@ class OCRService: ObservableObject {
             }
         }
 
+        let finalResults = pageResults
+        let count = finalResults.count
         await MainActor.run {
-            results = pageResults
+            results = finalResults
             progress = 1.0
             isProcessing = false
-            statusText = "Done — \(pageResults.count) pages processed"
+            statusText = "Done — \(count) pages processed"
         }
     }
 
