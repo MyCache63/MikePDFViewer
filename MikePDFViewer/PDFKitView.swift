@@ -5,12 +5,20 @@ extension Notification.Name {
     static let pdfZoomIn = Notification.Name("pdfZoomIn")
     static let pdfZoomOut = Notification.Name("pdfZoomOut")
     static let pdfZoomFit = Notification.Name("pdfZoomFit")
+    static let pdfRotateRight = Notification.Name("pdfRotateRight")
+    static let pdfRotateLeft = Notification.Name("pdfRotateLeft")
+    static let pdfCopy = Notification.Name("pdfCopy")
+    static let pdfDocumentModified = Notification.Name("pdfDocumentModified")
+    static let pdfToggleDarkMode = Notification.Name("pdfToggleDarkMode")
+    static let pdfSetDisplayMode = Notification.Name("pdfSetDisplayMode")
 }
 
 struct PDFKitView: NSViewRepresentable {
     let document: PDFDocument
     @Binding var currentPage: Int
     let searchText: String
+    let darkMode: Bool
+    let displayMode: PDFDisplayMode
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -19,9 +27,15 @@ struct PDFKitView: NSViewRepresentable {
     func makeNSView(context: Context) -> PDFView {
         let pdfView = PDFView()
         pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayMode = displayMode
         pdfView.displayDirection = .vertical
         pdfView.document = document
+
+        // Dark mode layer setup
+        pdfView.wantsLayer = true
+        if darkMode {
+            pdfView.layer?.filters = [CIFilter(name: "CIColorInvert")!]
+        }
 
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -44,6 +58,21 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.go(to: page)
         }
 
+        // Update display mode
+        if pdfView.displayMode != displayMode {
+            pdfView.displayMode = displayMode
+        }
+
+        // Update dark mode
+        let currentlyDark = !(pdfView.layer?.filters?.isEmpty ?? true)
+        if darkMode != currentlyDark {
+            if darkMode {
+                pdfView.layer?.filters = [CIFilter(name: "CIColorInvert")!]
+            } else {
+                pdfView.layer?.filters = []
+            }
+        }
+
         context.coordinator.search(searchText, in: pdfView)
     }
 
@@ -56,9 +85,13 @@ struct PDFKitView: NSViewRepresentable {
             self.parent = parent
             super.init()
 
-            NotificationCenter.default.addObserver(self, selector: #selector(handleZoomIn), name: .pdfZoomIn, object: nil)
-            NotificationCenter.default.addObserver(self, selector: #selector(handleZoomOut), name: .pdfZoomOut, object: nil)
-            NotificationCenter.default.addObserver(self, selector: #selector(handleZoomFit), name: .pdfZoomFit, object: nil)
+            let nc = NotificationCenter.default
+            nc.addObserver(self, selector: #selector(handleZoomIn), name: .pdfZoomIn, object: nil)
+            nc.addObserver(self, selector: #selector(handleZoomOut), name: .pdfZoomOut, object: nil)
+            nc.addObserver(self, selector: #selector(handleZoomFit), name: .pdfZoomFit, object: nil)
+            nc.addObserver(self, selector: #selector(handleRotateRight), name: .pdfRotateRight, object: nil)
+            nc.addObserver(self, selector: #selector(handleRotateLeft), name: .pdfRotateLeft, object: nil)
+            nc.addObserver(self, selector: #selector(handleCopy), name: .pdfCopy, object: nil)
         }
 
         deinit {
@@ -84,6 +117,24 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func handleZoomFit(_ notification: Notification) {
             pdfView?.autoScales = true
+        }
+
+        @objc func handleRotateRight(_ notification: Notification) {
+            guard let page = pdfView?.currentPage else { return }
+            page.rotation = (page.rotation + 90) % 360
+            pdfView?.layoutDocumentView()
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        }
+
+        @objc func handleRotateLeft(_ notification: Notification) {
+            guard let page = pdfView?.currentPage else { return }
+            page.rotation = (page.rotation + 270) % 360
+            pdfView?.layoutDocumentView()
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        }
+
+        @objc func handleCopy(_ notification: Notification) {
+            pdfView?.copy(nil)
         }
 
         func search(_ text: String, in pdfView: PDFView) {

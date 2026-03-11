@@ -15,6 +15,9 @@ struct ContentView: View {
     @State private var showOCRSheet = false
     @State private var showGoToPage = false
     @State private var goToPageText: String = ""
+    @State private var darkModeReading = false
+    @State private var displayMode: PDFDisplayMode = .singlePageContinuous
+    @State private var documentVersion: Int = 0
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -26,7 +29,8 @@ struct ContentView: View {
                 ThumbnailSidebar(
                     document: document,
                     currentPage: $currentPage,
-                    totalPages: totalPages
+                    totalPages: totalPages,
+                    documentVersion: documentVersion
                 )
             } else {
                 VStack {
@@ -41,7 +45,9 @@ struct ContentView: View {
                     PDFKitView(
                         document: document,
                         currentPage: $currentPage,
-                        searchText: searchText
+                        searchText: searchText,
+                        darkMode: darkModeReading,
+                        displayMode: displayMode
                     )
                 } else {
                     emptyState
@@ -58,6 +64,7 @@ struct ContentView: View {
         .frame(minWidth: 700, minHeight: 500)
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
+                // File group
                 Button {
                     openPDF()
                 } label: {
@@ -81,8 +88,16 @@ struct ContentView: View {
                 .help("Print (Cmd+P)")
                 .disabled(pdfDocument == nil)
 
+                if let url = pdfURL {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .help("Share PDF")
+                }
+
                 Divider()
 
+                // Search
                 Button {
                     showSearch.toggle()
                     if !showSearch { searchText = "" }
@@ -93,6 +108,7 @@ struct ContentView: View {
 
                 Divider()
 
+                // Zoom
                 Button {
                     NotificationCenter.default.post(name: .pdfZoomOut, object: nil)
                 } label: {
@@ -109,16 +125,47 @@ struct ContentView: View {
                 .help("Zoom In (Cmd++)")
                 .disabled(pdfDocument == nil)
 
+                Divider()
+
+                // View controls
                 Button {
-                    NotificationCenter.default.post(name: .pdfZoomFit, object: nil)
+                    darkModeReading.toggle()
                 } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    Image(systemName: darkModeReading ? "sun.max" : "moon")
                 }
-                .help("Zoom to Fit (Cmd+0)")
+                .help(darkModeReading ? "Light Mode" : "Dark Reading Mode")
+                .disabled(pdfDocument == nil)
+
+                Button {
+                    NotificationCenter.default.post(name: .pdfRotateLeft, object: nil)
+                } label: {
+                    Image(systemName: "rotate.left")
+                }
+                .help("Rotate Left")
+                .disabled(pdfDocument == nil)
+
+                Button {
+                    NotificationCenter.default.post(name: .pdfRotateRight, object: nil)
+                } label: {
+                    Image(systemName: "rotate.right")
+                }
+                .help("Rotate Right")
+                .disabled(pdfDocument == nil)
+
+                Picker("", selection: $displayMode) {
+                    Text("Continuous").tag(PDFDisplayMode.singlePageContinuous)
+                    Text("Single Page").tag(PDFDisplayMode.singlePage)
+                    Text("Two Pages").tag(PDFDisplayMode.twoUp)
+                    Text("Two Pages Scroll").tag(PDFDisplayMode.twoUpContinuous)
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+                .help("Display Mode")
                 .disabled(pdfDocument == nil)
 
                 Divider()
 
+                // Tools
                 Button {
                     showOCRSheet = true
                 } label: {
@@ -134,6 +181,7 @@ struct ContentView: View {
                 }
                 .help("Merge PDFs")
 
+                // Page indicator
                 if totalPages > 0 {
                     Button {
                         goToPageText = ""
@@ -158,6 +206,20 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.pdfDocument, pdfDocument)
         .focusedSceneValue(\.pdfFileURL, pdfURL)
+        .focusedSceneValue(\.isDarkMode, darkModeReading)
+        .focusedSceneValue(\.displayModeRawValue, displayMode.rawValue)
+        .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
+            documentVersion += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pdfToggleDarkMode)) { _ in
+            darkModeReading.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pdfSetDisplayMode)) { notification in
+            if let rawValue = notification.userInfo?["mode"] as? Int,
+               let mode = PDFDisplayMode(rawValue: rawValue) {
+                displayMode = mode
+            }
+        }
         .onChange(of: pdfURL) { _, newURL in
             loadDocument(from: newURL)
         }
@@ -181,6 +243,8 @@ struct ContentView: View {
             onGoToPage: { if totalPages > 0 { goToPageText = ""; showGoToPage = true } }
         ))
     }
+
+    // MARK: - Go to Page
 
     private var goToPagePopover: some View {
         VStack(spacing: 12) {
@@ -212,6 +276,8 @@ struct ContentView: View {
         showGoToPage = false
     }
 
+    // MARK: - Empty State
+
     private var emptyState: some View {
         VStack(spacing: 20) {
             Image(systemName: "doc.text")
@@ -241,6 +307,8 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    // MARK: - Search Bar
 
     private var searchBar: some View {
         VStack {
@@ -280,6 +348,8 @@ struct ContentView: View {
             Spacer()
         }
     }
+
+    // MARK: - Actions
 
     private func openPDF() {
         let panel = NSOpenPanel()
@@ -324,10 +394,13 @@ struct ContentView: View {
                 pdfDocument = doc
                 totalPages = doc?.pageCount ?? 0
                 currentPage = 0
+                documentVersion = 0
             }
         }
     }
 }
+
+// MARK: - Keyboard Handler
 
 struct KeyboardHandler: NSViewRepresentable {
     let onFind: () -> Void

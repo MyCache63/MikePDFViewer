@@ -3,12 +3,21 @@ import PDFKit
 import UniformTypeIdentifiers
 
 // MARK: - Focused Value Keys
+
 struct FocusedPDFDocumentKey: FocusedValueKey {
     typealias Value = PDFDocument
 }
 
 struct FocusedPDFURLKey: FocusedValueKey {
     typealias Value = URL
+}
+
+struct FocusedDarkModeKey: FocusedValueKey {
+    typealias Value = Bool
+}
+
+struct FocusedDisplayModeKey: FocusedValueKey {
+    typealias Value = Int
 }
 
 extension FocusedValues {
@@ -20,7 +29,17 @@ extension FocusedValues {
         get { self[FocusedPDFURLKey.self] }
         set { self[FocusedPDFURLKey.self] = newValue }
     }
+    var isDarkMode: Bool? {
+        get { self[FocusedDarkModeKey.self] }
+        set { self[FocusedDarkModeKey.self] = newValue }
+    }
+    var displayModeRawValue: Int? {
+        get { self[FocusedDisplayModeKey.self] }
+        set { self[FocusedDisplayModeKey.self] = newValue }
+    }
 }
+
+// MARK: - App
 
 @main
 struct MikePDFViewerApp: App {
@@ -29,6 +48,8 @@ struct MikePDFViewerApp: App {
     @State private var showMergeView = false
     @FocusedValue(\.pdfDocument) var focusedDocument
     @FocusedValue(\.pdfFileURL) var focusedURL
+    @FocusedValue(\.isDarkMode) var isDarkMode
+    @FocusedValue(\.displayModeRawValue) var displayModeRaw
 
     var body: some Scene {
         WindowGroup {
@@ -40,6 +61,7 @@ struct MikePDFViewerApp: App {
                 }
         }
         .commands {
+            // MARK: File Menu
             CommandGroup(replacing: .newItem) {
                 Button("Open PDF...") {
                     openPDF()
@@ -86,6 +108,18 @@ struct MikePDFViewerApp: App {
                 }
             }
 
+            // MARK: Edit Menu
+            CommandGroup(after: .pasteboard) {
+                Divider()
+
+                Button("Copy Selection") {
+                    NotificationCenter.default.post(name: .pdfCopy, object: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                .disabled(focusedDocument == nil)
+            }
+
+            // MARK: Print
             CommandGroup(replacing: .printItem) {
                 Button("Print...") {
                     printDocument()
@@ -94,6 +128,7 @@ struct MikePDFViewerApp: App {
                 .disabled(focusedDocument == nil)
             }
 
+            // MARK: View Menu
             CommandGroup(after: .toolbar) {
                 Divider()
 
@@ -114,6 +149,46 @@ struct MikePDFViewerApp: App {
                 }
                 .keyboardShortcut("0", modifiers: .command)
                 .disabled(focusedDocument == nil)
+
+                Divider()
+
+                Button(isDarkMode == true ? "Light Reading Mode" : "Dark Reading Mode") {
+                    NotificationCenter.default.post(name: .pdfToggleDarkMode, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .disabled(focusedDocument == nil)
+
+                Divider()
+
+                Menu("Display Mode") {
+                    Button("Continuous Scroll") {
+                        setDisplayMode(.singlePageContinuous)
+                    }
+                    Button("Single Page") {
+                        setDisplayMode(.singlePage)
+                    }
+                    Button("Two Pages") {
+                        setDisplayMode(.twoUp)
+                    }
+                    Button("Two Pages Scroll") {
+                        setDisplayMode(.twoUpContinuous)
+                    }
+                }
+                .disabled(focusedDocument == nil)
+
+                Divider()
+
+                Button("Rotate Right") {
+                    NotificationCenter.default.post(name: .pdfRotateRight, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command])
+                .disabled(focusedDocument == nil)
+
+                Button("Rotate Left") {
+                    NotificationCenter.default.post(name: .pdfRotateLeft, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: [.command])
+                .disabled(focusedDocument == nil)
             }
         }
 
@@ -122,6 +197,8 @@ struct MikePDFViewerApp: App {
         }
         .defaultSize(width: 900, height: 600)
     }
+
+    // MARK: - Actions
 
     private func openPDF() {
         let panel = NSOpenPanel()
@@ -156,5 +233,13 @@ struct MikePDFViewerApp: App {
             printOperation.showsProgressPanel = true
             printOperation.run()
         }
+    }
+
+    private func setDisplayMode(_ mode: PDFDisplayMode) {
+        NotificationCenter.default.post(
+            name: .pdfSetDisplayMode,
+            object: nil,
+            userInfo: ["mode": mode.rawValue]
+        )
     }
 }

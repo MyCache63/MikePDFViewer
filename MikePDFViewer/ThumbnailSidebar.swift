@@ -5,6 +5,7 @@ struct ThumbnailSidebar: View {
     let document: PDFDocument
     @Binding var currentPage: Int
     let totalPages: Int
+    let documentVersion: Int
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -14,7 +15,8 @@ struct ThumbnailSidebar: View {
                         ThumbnailItem(
                             document: document,
                             pageIndex: index,
-                            isSelected: index == currentPage
+                            isSelected: index == currentPage,
+                            documentVersion: documentVersion
                         )
                         .id(index)
                         .onTapGesture {
@@ -37,6 +39,7 @@ struct ThumbnailItem: View {
     let document: PDFDocument
     let pageIndex: Int
     let isSelected: Bool
+    let documentVersion: Int
 
     @State private var thumbnail: NSImage?
 
@@ -72,6 +75,10 @@ struct ThumbnailItem: View {
         }
         .padding(.horizontal, 4)
         .onAppear {
+            generateThumbnail()
+        }
+        .onChange(of: documentVersion) { _, _ in
+            thumbnail = nil
             generateThumbnail()
         }
     }
