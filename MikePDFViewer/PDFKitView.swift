@@ -54,6 +54,17 @@ class PrintablePDFView: PDFView {
         }
     }
 
+    /// Add annotation with undo support
+    func addAnnotationWithUndo(_ annotation: PDFAnnotation, to page: PDFPage) {
+        page.addAnnotation(annotation)
+        undoManager?.registerUndo(withTarget: self) { target in
+            page.removeAnnotation(annotation)
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        }
+        undoManager?.setActionName("Add Annotation")
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+    }
+
     override func mouseDown(with event: NSEvent) {
         // If we have a pending signature, place it where the user clicked
         if let sigImage = pendingSignatureImage {
@@ -74,10 +85,9 @@ class PrintablePDFView: PDFView {
             )
 
             let annotation = SignatureAnnotation(bounds: bounds, image: sigImage)
-            page.addAnnotation(annotation)
+            addAnnotationWithUndo(annotation, to: page)
             pendingSignatureImage = nil
             NSCursor.arrow.set()
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
             return
         }
 
@@ -249,10 +259,9 @@ struct PDFKitView: NSViewRepresentable {
                 let bounds = lineSel.bounds(for: page)
                 let annotation = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
                 annotation.color = color
-                page.addAnnotation(annotation)
+                pdfView.addAnnotationWithUndo(annotation, to: page)
             }
             pdfView.clearSelection()
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
         }
 
         @objc func handleAddStickyNote(_ notification: Notification) {
@@ -272,8 +281,7 @@ struct PDFKitView: NSViewRepresentable {
             let annotation = PDFAnnotation(bounds: bounds, forType: .text, withProperties: nil)
             annotation.contents = text
             annotation.color = color
-            page.addAnnotation(annotation)
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            pdfView.addAnnotationWithUndo(annotation, to: page)
         }
 
         @objc func handleAddFreeText(_ notification: Notification) {
@@ -293,8 +301,7 @@ struct PDFKitView: NSViewRepresentable {
             annotation.font = NSFont.systemFont(ofSize: 14)
             annotation.fontColor = .black
             annotation.color = .clear
-            page.addAnnotation(annotation)
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            pdfView.addAnnotationWithUndo(annotation, to: page)
         }
 
         @objc func handleApplySignature(_ notification: Notification) {
