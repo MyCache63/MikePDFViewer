@@ -44,8 +44,6 @@ extension FocusedValues {
 @main
 struct MikePDFViewerApp: App {
     @StateObject private var recentFiles = RecentFilesManager()
-    @State private var pdfURL: URL?
-    @State private var showMergeView = false
     @FocusedValue(\.pdfDocument) var focusedDocument
     @FocusedValue(\.pdfFileURL) var focusedURL
     @FocusedValue(\.isDarkMode) var isDarkMode
@@ -53,12 +51,8 @@ struct MikePDFViewerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(pdfURL: $pdfURL)
+            ContentView()
                 .environmentObject(recentFiles)
-                .onOpenURL { url in
-                    recentFiles.add(url)
-                    pdfURL = url
-                }
         }
         .commands {
             // MARK: File Menu
@@ -85,7 +79,7 @@ struct MikePDFViewerApp: App {
                 Divider()
 
                 Button("Merge PDFs...") {
-                    showMergeView = true
+                    NotificationCenter.default.post(name: .pdfShowMerge, object: nil)
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
 
@@ -97,7 +91,7 @@ struct MikePDFViewerApp: App {
                     } else {
                         ForEach(recentFiles.recentURLs, id: \.self) { url in
                             Button(url.lastPathComponent) {
-                                pdfURL = url
+                                NotificationCenter.default.post(name: .pdfOpenFile, object: nil, userInfo: ["url": url])
                             }
                         }
                         Divider()
@@ -125,6 +119,20 @@ struct MikePDFViewerApp: App {
                     printDocument()
                 }
                 .keyboardShortcut("p", modifiers: .command)
+                .disabled(focusedDocument == nil)
+            }
+
+            // MARK: Tools Menu
+            CommandMenu("Tools") {
+                Button("Toggle Bookmark") {
+                    NotificationCenter.default.post(name: .pdfToggleBookmark, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: .command)
+                .disabled(focusedDocument == nil)
+
+                Button("Extract Pages...") {
+                    NotificationCenter.default.post(name: .pdfExtractPages, object: nil)
+                }
                 .disabled(focusedDocument == nil)
             }
 
@@ -189,13 +197,22 @@ struct MikePDFViewerApp: App {
                 }
                 .keyboardShortcut("l", modifiers: [.command])
                 .disabled(focusedDocument == nil)
+
+                Divider()
+
+                Button("Split View") {
+                    NotificationCenter.default.post(name: .pdfToggleSplitView, object: nil)
+                }
+                .keyboardShortcut("2", modifiers: [.command, .option])
+                .disabled(focusedDocument == nil)
+
+                Button("Presentation Mode") {
+                    NotificationCenter.default.post(name: .pdfStartPresentation, object: nil)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(focusedDocument == nil)
             }
         }
-
-        Window("Merge PDFs", id: "merge") {
-            PDFMergeView()
-        }
-        .defaultSize(width: 900, height: 600)
     }
 
     // MARK: - Actions
@@ -206,7 +223,7 @@ struct MikePDFViewerApp: App {
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
             recentFiles.add(url)
-            pdfURL = url
+            NotificationCenter.default.post(name: .pdfOpenFile, object: nil, userInfo: ["url": url])
         }
     }
 

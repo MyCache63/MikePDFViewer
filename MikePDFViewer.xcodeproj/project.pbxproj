@@ -19,6 +19,19 @@
 		AA00000A /* OCRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* OCRView.swift */; };
 		AA00000B /* DOCXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000023 /* DOCXExporter.swift */; };
 		AA00000C /* AnnotationToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000024 /* AnnotationToolbar.swift */; };
+		AA00000D /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000025 /* BookmarkManager.swift */; };
+		AA00000E /* PageExtractView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000026 /* PageExtractView.swift */; };
+		AA00000F /* PresentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000027 /* PresentationView.swift */; };
+		AA000100 /* PageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000028 /* PageRenderer.swift */; };
+		AA000101 /* SignatureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000029 /* SignatureManager.swift */; };
+		AA000102 /* SignatureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002A /* SignatureView.swift */; };
+		AA000103 /* RedactionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002B /* RedactionService.swift */; };
+		AA000104 /* PasswordSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002C /* PasswordSheet.swift */; };
+		AA000105 /* WatermarkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002D /* WatermarkService.swift */; };
+		AA000106 /* WatermarkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002E /* WatermarkSheet.swift */; };
+		AA000107 /* ExportImagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002F /* ExportImagesView.swift */; };
+		AA000108 /* PDFCompareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000110 /* PDFCompareService.swift */; };
+		AA000109 /* PDFCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000111 /* PDFCompareView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +50,19 @@
 		AA000022 /* OCRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRView.swift; sourceTree = "<group>"; };
 		AA000023 /* DOCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXExporter.swift; sourceTree = "<group>"; };
 		AA000024 /* AnnotationToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationToolbar.swift; sourceTree = "<group>"; };
+		AA000025 /* BookmarkManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarkManager.swift; sourceTree = "<group>"; };
+		AA000026 /* PageExtractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageExtractView.swift; sourceTree = "<group>"; };
+		AA000027 /* PresentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationView.swift; sourceTree = "<group>"; };
+		AA000028 /* PageRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageRenderer.swift; sourceTree = "<group>"; };
+		AA000029 /* SignatureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignatureManager.swift; sourceTree = "<group>"; };
+		AA00002A /* SignatureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignatureView.swift; sourceTree = "<group>"; };
+		AA00002B /* RedactionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedactionService.swift; sourceTree = "<group>"; };
+		AA00002C /* PasswordSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordSheet.swift; sourceTree = "<group>"; };
+		AA00002D /* WatermarkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatermarkService.swift; sourceTree = "<group>"; };
+		AA00002E /* WatermarkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatermarkSheet.swift; sourceTree = "<group>"; };
+		AA00002F /* ExportImagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportImagesView.swift; sourceTree = "<group>"; };
+		AA000110 /* PDFCompareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCompareService.swift; sourceTree = "<group>"; };
+		AA000111 /* PDFCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCompareView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +101,19 @@
 				AA000022 /* OCRView.swift */,
 				AA000023 /* DOCXExporter.swift */,
 				AA000024 /* AnnotationToolbar.swift */,
+				AA000025 /* BookmarkManager.swift */,
+				AA000026 /* PageExtractView.swift */,
+				AA000027 /* PresentationView.swift */,
+				AA000028 /* PageRenderer.swift */,
+				AA000029 /* SignatureManager.swift */,
+				AA00002A /* SignatureView.swift */,
+				AA00002B /* RedactionService.swift */,
+				AA00002C /* PasswordSheet.swift */,
+				AA00002D /* WatermarkService.swift */,
+				AA00002E /* WatermarkSheet.swift */,
+				AA00002F /* ExportImagesView.swift */,
+				AA000110 /* PDFCompareService.swift */,
+				AA000111 /* PDFCompareView.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -167,6 +206,19 @@
 				AA00000A /* OCRView.swift in Sources */,
 				AA00000B /* DOCXExporter.swift in Sources */,
 				AA00000C /* AnnotationToolbar.swift in Sources */,
+				AA00000D /* BookmarkManager.swift in Sources */,
+				AA00000E /* PageExtractView.swift in Sources */,
+				AA00000F /* PresentationView.swift in Sources */,
+				AA000100 /* PageRenderer.swift in Sources */,
+				AA000101 /* SignatureManager.swift in Sources */,
+				AA000102 /* SignatureView.swift in Sources */,
+				AA000103 /* RedactionService.swift in Sources */,
+				AA000104 /* PasswordSheet.swift in Sources */,
+				AA000105 /* WatermarkService.swift in Sources */,
+				AA000106 /* WatermarkSheet.swift in Sources */,
+				AA000107 /* ExportImagesView.swift in Sources */,
+				AA000108 /* PDFCompareService.swift in Sources */,
+				AA000109 /* PDFCompareView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,7 +361,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.1;
+				MARKETING_VERSION = 5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -337,7 +389,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 3.1;
+				MARKETING_VERSION = 5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

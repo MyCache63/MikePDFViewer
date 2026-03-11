@@ -16,6 +16,14 @@ extension Notification.Name {
     static let pdfApplyStrikethrough = Notification.Name("pdfApplyStrikethrough")
     static let pdfAddStickyNote = Notification.Name("pdfAddStickyNote")
     static let pdfAddFreeText = Notification.Name("pdfAddFreeText")
+    static let pdfToggleBookmark = Notification.Name("pdfToggleBookmark")
+    static let pdfExtractPages = Notification.Name("pdfExtractPages")
+    static let pdfOpenFile = Notification.Name("pdfOpenFile")
+    static let pdfToggleSplitView = Notification.Name("pdfToggleSplitView")
+    static let pdfStartPresentation = Notification.Name("pdfStartPresentation")
+    static let pdfShowMerge = Notification.Name("pdfShowMerge")
+    static let pdfApplySignature = Notification.Name("pdfApplySignature")
+    static let pdfRedactSelection = Notification.Name("pdfRedactSelection")
 }
 
 struct PDFKitView: NSViewRepresentable {
@@ -102,6 +110,8 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleStrikethrough), name: .pdfApplyStrikethrough, object: nil)
             nc.addObserver(self, selector: #selector(handleAddStickyNote), name: .pdfAddStickyNote, object: nil)
             nc.addObserver(self, selector: #selector(handleAddFreeText), name: .pdfAddFreeText, object: nil)
+            nc.addObserver(self, selector: #selector(handleApplySignature), name: .pdfApplySignature, object: nil)
+            nc.addObserver(self, selector: #selector(handleRedactSelection), name: .pdfRedactSelection, object: nil)
         }
 
         deinit {
@@ -217,6 +227,38 @@ struct PDFKitView: NSViewRepresentable {
             NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
         }
 
+        @objc func handleApplySignature(_ notification: Notification) {
+            guard let pdfView = pdfView,
+                  let page = pdfView.currentPage,
+                  let image = notification.userInfo?["image"] as? NSImage else { return }
+
+            let visibleRect = pdfView.convert(pdfView.visibleRect, to: page)
+            let sigWidth: CGFloat = 150
+            let sigHeight = sigWidth * (image.size.height / max(image.size.width, 1))
+            let bounds = CGRect(
+                x: visibleRect.midX - sigWidth / 2,
+                y: visibleRect.midY - sigHeight / 2,
+                width: sigWidth,
+                height: sigHeight
+            )
+
+            let annotation = SignatureAnnotation(bounds: bounds, image: image)
+            page.addAnnotation(annotation)
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        }
+
+        @objc func handleRedactSelection(_ notification: Notification) {
+            guard let pdfView = pdfView,
+                  let selection = pdfView.currentSelection,
+                  let document = pdfView.document else { return }
+
+            let success = RedactionService.redactSelection(selection, in: document)
+            if success {
+                pdfView.clearSelection()
+                NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            }
+        }
+
         func search(_ text: String, in pdfView: PDFView) {
             guard text != lastSearchText else { return }
             lastSearchText = text
@@ -233,5 +275,28 @@ struct PDFKitView: NSViewRepresentable {
                 }
             }
         }
+    }
+}
+
+// MARK: - Signature Annotation
+
+class SignatureAnnotation: PDFAnnotation {
+    private var signatureImage: NSImage
+
+    init(bounds: CGRect, image: NSImage) {
+        self.signatureImage = image
+        super.init(bounds: bounds, forType: .stamp, withProperties: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        self.signatureImage = NSImage()
+        super.init(coder: coder)
+    }
+
+    override func draw(with box: PDFDisplayBox, in context: CGContext) {
+        super.draw(with: box, in: context)
+
+        guard let cgImage = signatureImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        context.draw(cgImage, in: bounds)
     }
 }

@@ -3,7 +3,7 @@ import PDFKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @Binding var pdfURL: URL?
+    @State var pdfURL: URL?
     @EnvironmentObject var recentFiles: RecentFilesManager
     @State private var pdfDocument: PDFDocument?
     @State private var currentPage: Int = 0
@@ -24,17 +24,88 @@ struct ContentView: View {
     @State private var showTextInput = false
     @State private var noteText: String = ""
     @State private var formFieldCount: Int = 0
+    @State private var showExtractSheet = false
+    @State private var showSplitView = false
+    @State private var splitCurrentPage: Int = 0
+    @State private var showPresentation = false
+    @State private var showSignatureSheet = false
+    @State private var showRedactConfirm = false
+    @State private var showPasswordSheet = false
+    @State private var showEncryptSheet = false
+    @State private var showWatermarkSheet = false
+    @State private var showExportImages = false
+    @State private var showCompareSheet = false
+    @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     }
 
     var body: some View {
-        mainView
-            .focusedSceneValue(\.pdfDocument, pdfDocument)
-            .focusedSceneValue(\.pdfFileURL, pdfURL)
-            .focusedSceneValue(\.isDarkMode, darkModeReading)
-            .focusedSceneValue(\.displayModeRawValue, displayMode.rawValue)
+        viewWithNotifications
+            .sheet(isPresented: $showMergeSheet) {
+                PDFMergeView()
+                    .frame(minWidth: 800, minHeight: 500)
+            }
+            .sheet(isPresented: $showOCRSheet) {
+                if let document = pdfDocument {
+                    OCRView(document: document)
+                        .frame(minWidth: 800, minHeight: 600)
+                }
+            }
+            .sheet(isPresented: $showExtractSheet) {
+                if let document = pdfDocument {
+                    PageExtractView(document: document)
+                        .frame(minWidth: 700, minHeight: 500)
+                }
+            }
+            .sheet(isPresented: $showSignatureSheet) {
+                SignatureView { image in
+                    NotificationCenter.default.post(
+                        name: .pdfApplySignature,
+                        object: nil,
+                        userInfo: ["image": image]
+                    )
+                }
+            }
+            .sheet(isPresented: $showPasswordSheet) {
+                if let document = pdfDocument {
+                    PasswordSheet(document: document, onUnlock: {
+                        documentVersion += 1
+                        totalPages = document.pageCount
+                    })
+                }
+            }
+            .sheet(isPresented: $showEncryptSheet) {
+                if let document = pdfDocument {
+                    EncryptSheet(document: document, currentURL: pdfURL)
+                }
+            }
+            .sheet(isPresented: $showWatermarkSheet) {
+                if let document = pdfDocument {
+                    WatermarkSheet(document: document)
+                }
+            }
+            .sheet(isPresented: $showExportImages) {
+                if let document = pdfDocument {
+                    ExportImagesView(document: document)
+                }
+            }
+            .sheet(isPresented: $showCompareSheet) {
+                if let document = pdfDocument {
+                    PDFCompareView(document1: document)
+                }
+            }
+            .background(KeyboardHandler(
+                onFind: { showSearch.toggle(); if !showSearch { searchText = "" } },
+                onEscape: { showSearch = false; searchText = "" },
+                onOCR: { if pdfDocument != nil { showOCRSheet = true } },
+                onGoToPage: { if totalPages > 0 { goToPageText = ""; showGoToPage = true } }
+            ))
+    }
+
+    private var viewWithNotifications: some View {
+        viewWithAlerts
             .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
                 documentVersion += 1
             }
@@ -47,48 +118,63 @@ struct ContentView: View {
                     displayMode = mode
                 }
             }
-            .onChange(of: pdfURL) { _, newURL in
-                loadDocument(from: newURL)
+            .onReceive(NotificationCenter.default.publisher(for: .pdfToggleBookmark)) { _ in
+                if pdfDocument != nil { bookmarkManager.toggleBookmark(for: currentPage) }
             }
-            .onAppear {
-                loadDocument(from: pdfURL)
+            .onReceive(NotificationCenter.default.publisher(for: .pdfExtractPages)) { _ in
+                if pdfDocument != nil { showExtractSheet = true }
             }
-            .sheet(isPresented: $showMergeSheet) {
-                PDFMergeView()
-                    .frame(minWidth: 800, minHeight: 500)
+            .onReceive(NotificationCenter.default.publisher(for: .pdfShowMerge)) { _ in
+                showMergeSheet = true
             }
-            .sheet(isPresented: $showOCRSheet) {
-                if let document = pdfDocument {
-                    OCRView(document: document)
-                        .frame(minWidth: 800, minHeight: 600)
+            .onReceive(NotificationCenter.default.publisher(for: .pdfOpenFile)) { notification in
+                if let url = notification.userInfo?["url"] as? URL {
+                    recentFiles.add(url)
+                    pdfURL = url
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfToggleSplitView)) { _ in
+                if pdfDocument != nil {
+                    showSplitView.toggle()
+                    if showSplitView { splitCurrentPage = currentPage }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
+                if pdfDocument != nil { showPresentation = true }
+            }
+            .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
+            .onAppear { loadDocument(from: pdfURL) }
+            .onOpenURL { url in recentFiles.add(url); pdfURL = url }
+    }
+
+    private var viewWithAlerts: some View {
+        mainView
+            .focusedSceneValue(\.pdfDocument, pdfDocument)
+            .focusedSceneValue(\.pdfFileURL, pdfURL)
+            .focusedSceneValue(\.isDarkMode, darkModeReading)
+            .focusedSceneValue(\.displayModeRawValue, displayMode.rawValue)
             .alert("Add Sticky Note", isPresented: $showNoteInput) {
                 TextField("Note text", text: $noteText)
-                Button("Add") {
-                    postAnnotation(.pdfAddStickyNote, text: noteText)
-                    noteText = ""
-                }
+                Button("Add") { postAnnotation(.pdfAddStickyNote, text: noteText); noteText = "" }
                 Button("Cancel", role: .cancel) { noteText = "" }
             } message: {
                 Text("Enter text for the sticky note")
             }
             .alert("Add Text Box", isPresented: $showTextInput) {
                 TextField("Text", text: $noteText)
-                Button("Add") {
-                    postAnnotation(.pdfAddFreeText, text: noteText)
-                    noteText = ""
-                }
+                Button("Add") { postAnnotation(.pdfAddFreeText, text: noteText); noteText = "" }
                 Button("Cancel", role: .cancel) { noteText = "" }
             } message: {
                 Text("Enter text for the text box")
             }
-            .background(KeyboardHandler(
-                onFind: { showSearch.toggle(); if !showSearch { searchText = "" } },
-                onEscape: { showSearch = false; searchText = "" },
-                onOCR: { if pdfDocument != nil { showOCRSheet = true } },
-                onGoToPage: { if totalPages > 0 { goToPageText = ""; showGoToPage = true } }
-            ))
+            .alert("Redact Selected Text", isPresented: $showRedactConfirm) {
+                Button("Redact", role: .destructive) {
+                    NotificationCenter.default.post(name: .pdfRedactSelection, object: nil)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will permanently remove the selected text by flattening affected pages to images. This cannot be undone.")
+            }
     }
 
     // MARK: - Main Layout
@@ -126,7 +212,11 @@ struct ContentView: View {
                 document: document,
                 currentPage: $currentPage,
                 totalPages: totalPages,
-                documentVersion: documentVersion
+                documentVersion: documentVersion,
+                bookmarkManager: bookmarkManager,
+                onMovePage: { from, to in
+                    movePage(from: from, to: to)
+                }
             )
         } else {
             VStack {
@@ -140,7 +230,25 @@ struct ContentView: View {
     private var detailContent: some View {
         VStack(spacing: 0) {
             annotationBar
-            pdfContent
+            if showSplitView, let document = pdfDocument {
+                HSplitView {
+                    pdfContent
+                    PDFKitView(
+                        document: document,
+                        currentPage: $splitCurrentPage,
+                        searchText: "",
+                        darkMode: darkModeReading,
+                        displayMode: displayMode
+                    )
+                }
+            } else {
+                pdfContent
+            }
+        }
+        .sheet(isPresented: $showPresentation) {
+            if let document = pdfDocument {
+                PresentationView(document: document, startPage: currentPage)
+            }
         }
     }
 
@@ -243,6 +351,16 @@ struct ContentView: View {
         }
         .pickerStyle(.menu).frame(width: 130)
         .help("Display Mode").disabled(pdfDocument == nil)
+
+        Button { showSplitView.toggle(); if showSplitView { splitCurrentPage = currentPage } } label: {
+            Image(systemName: showSplitView ? "rectangle" : "rectangle.split.2x1")
+        }
+        .help(showSplitView ? "Close Split View" : "Split View").disabled(pdfDocument == nil)
+
+        Button { showPresentation = true } label: {
+            Image(systemName: "play.rectangle")
+        }
+        .help("Presentation Mode").disabled(pdfDocument == nil)
     }
 
     @ViewBuilder
@@ -252,10 +370,52 @@ struct ContentView: View {
         }
         .help("Markup Tools").disabled(pdfDocument == nil)
 
+        Button { bookmarkManager.toggleBookmark(for: currentPage) } label: {
+            Image(systemName: bookmarkManager.isBookmarked(currentPage) ? "bookmark.fill" : "bookmark")
+        }
+        .help("Toggle Bookmark (Cmd+D)").disabled(pdfDocument == nil)
+
+        Button { showExtractSheet = true } label: {
+            Image(systemName: "doc.badge.plus")
+        }
+        .help("Extract Pages").disabled(pdfDocument == nil)
+
+        Button { showSignatureSheet = true } label: {
+            Image(systemName: "signature")
+        }
+        .help("Add Signature").disabled(pdfDocument == nil)
+
+        Button {
+            showRedactConfirm = true
+        } label: {
+            Image(systemName: "eye.slash")
+        }
+        .help("Redact Selection (select text first)").disabled(pdfDocument == nil)
+
         Button { showOCRSheet = true } label: {
             Image(systemName: "doc.text.magnifyingglass")
         }
         .help("OCR Document").disabled(pdfDocument == nil)
+
+        Button { showEncryptSheet = true } label: {
+            Image(systemName: "lock.shield")
+        }
+        .help("Password Protect").disabled(pdfDocument == nil)
+
+        Button { showWatermarkSheet = true } label: {
+            Image(systemName: "drop.triangle")
+        }
+        .help("Add Watermark").disabled(pdfDocument == nil)
+
+        Button { showExportImages = true } label: {
+            Image(systemName: "photo.on.rectangle")
+        }
+        .help("Export as Images").disabled(pdfDocument == nil)
+
+        Button { showCompareSheet = true } label: {
+            Image(systemName: "square.split.2x1")
+        }
+        .help("Compare PDFs").disabled(pdfDocument == nil)
 
         Button { showMergeSheet = true } label: {
             Image(systemName: "doc.on.doc")
@@ -442,6 +602,27 @@ struct ContentView: View {
         )
     }
 
+    private func movePage(from source: Int, to destination: Int) {
+        guard let document = pdfDocument,
+              source != destination,
+              source >= 0, source < document.pageCount,
+              destination >= 0, destination < document.pageCount,
+              let page = document.page(at: source) else { return }
+
+        document.removePage(at: source)
+        document.insert(page, at: destination)
+        documentVersion += 1
+
+        // Update current page to follow the moved page
+        if currentPage == source {
+            currentPage = destination
+        } else if source < destination && currentPage > source && currentPage <= destination {
+            currentPage -= 1
+        } else if source > destination && currentPage >= destination && currentPage < source {
+            currentPage += 1
+        }
+    }
+
     private func loadDocument(from url: URL?) {
         guard let url else {
             pdfDocument = nil
@@ -451,13 +632,18 @@ struct ContentView: View {
         }
         DispatchQueue.global(qos: .userInitiated).async {
             let doc = PDFDocument(url: url)
-            let fields = Self.countFormFields(doc)
+            let isLocked = doc?.isLocked ?? false
+            let fields = isLocked ? 0 : Self.countFormFields(doc)
             DispatchQueue.main.async {
                 pdfDocument = doc
-                totalPages = doc?.pageCount ?? 0
+                totalPages = isLocked ? 0 : (doc?.pageCount ?? 0)
                 currentPage = 0
                 documentVersion = 0
                 formFieldCount = fields
+                bookmarkManager.load(for: url)
+                if isLocked {
+                    showPasswordSheet = true
+                }
             }
         }
     }
@@ -527,6 +713,6 @@ class KeyCatcherView: NSView {
 }
 
 #Preview {
-    ContentView(pdfURL: .constant(nil))
+    ContentView()
         .environmentObject(RecentFilesManager())
 }

@@ -1,68 +1,90 @@
-# MikePDFViewer Handover — March 9, 2026
+# MikePDFViewer Handover — March 11, 2026
+
+## Current State: v5.0 — All 20 Features Implemented
+
+**BUILD STATUS: Builds successfully, not yet device-tested**
 
 ## What We Built
 
-### Native macOS App (v2)
-A fast, native PDF viewer built in Swift/SwiftUI using Apple's PDFKit. Installed at `/Applications/MikePDFViewer.app` and set as the default PDF viewer on Michael's Mac.
+### Native macOS App (v5.0)
+A full-featured PDF viewer/editor built in Swift/SwiftUI using Apple's PDFKit.
 
-**Features:**
-- PDF viewing with continuous vertical scrolling
-- Thumbnail sidebar for page navigation
-- Search within PDF (Cmd+F) with highlighting
-- Recent files menu (last 10 PDFs, persisted in UserDefaults)
-- PDF Merge tool: drag-and-drop multiple PDFs, expand to see page thumbnails, click to include/exclude pages, reorder files, merge & save as new PDF
-- Keyboard shortcuts: Cmd+O open, Cmd+F search, Shift+Cmd+M merge, Escape close
-- Custom app icon (circular Q with red/white PDF magnifying glass design)
+**All Features (20 total across 8 phases):**
 
-**Key Files:**
-- `MikePDFViewer/MikePDFViewerApp.swift` — App entry point, scene/window setup, menu commands, onOpenURL handler
-- `MikePDFViewer/ContentView.swift` — Main viewer with sidebar, search bar, toolbar, NSOpenPanel file picker
-- `MikePDFViewer/PDFKitView.swift` — NSViewRepresentable wrapping PDFView, async document loading, search highlighting
-- `MikePDFViewer/ThumbnailSidebar.swift` — LazyVStack of page thumbnails, async generation, scroll-to-current
-- `MikePDFViewer/PDFMergeView.swift` — Full merge UI: drag-drop, page grid with include/exclude, reorder, NSSavePanel export
-- `MikePDFViewer/RecentFilesManager.swift` — ObservableObject persisting recent file paths to UserDefaults
-- `MikePDFViewer/Info.plist` — CFBundleDocumentTypes for com.adobe.pdf, CFBundleIconFile
-- `MikePDFViewer/MikePDFViewer.entitlements` — App sandbox with read-write user-selected files
-- `MikePDFViewer/AppIcon.icns` — macOS icon file generated from source PNG
+Phase 1 (v3.0-3.1): Foundation
+- PDF viewing with continuous/single/two-up display modes
+- Thumbnail sidebar, search (Cmd+F), recent files
+- Save (Cmd+S), Save As (Shift+Cmd+S), Print (Cmd+P)
+- Zoom In/Out/Fit, Dark Reading Mode, Page Rotation
+- Copy selection, Share sheet, Go to Page (Cmd+G)
+- OCR with DOCX export (Shift+Cmd+R)
+- PDF Merge tool
 
-### Web Version (aiquorum.org/pdf-viewer)
-A fully client-side PDF viewer and merger that runs in the browser. No files are uploaded — everything processes locally using PDF.js and pdf-lib.
+Phase 2 (v3.2): Annotations
+- Highlight, Underline, Strikethrough (select text, then apply)
+- Sticky Notes and Free Text annotations
+- Annotation toolbar with color picker
+- Form field detection and native form filling
 
-**Features:**
-- Viewer tab: open/drop PDF, page rendering, thumbnail sidebar, zoom, search with prev/next
-- Merge tab: add multiple PDFs, page thumbnails with click-to-exclude, reorder, download merged PDF
-- Keyboard shortcuts: Cmd+O, Cmd+F, Escape
-- Download banner linking to native Mac app on GitHub
-- No login required (public page to drive traffic)
+Phase 3 (v3.3): Page Management
+- Bookmarks with sidebar section and toggle (Cmd+D)
+- Page extraction to new PDF
+- Page reorder via drag-and-drop in thumbnail sidebar
 
-**Key Files (in AIQuorumPlatform repo):**
-- `web/templates/pdf-viewer.html` — Self-contained HTML/CSS/JS page
-- `web/static/pdf-viewer-icon.png` — App icon for the page header
-- `app.py` — Route at `/pdf-viewer` (no auth required)
+Phase 4 (v4.0): Multi-Document
+- Tab support (each window independent, Cmd+N for new window)
+- Split view (same document in two panes)
+- Presentation mode (fullscreen, arrow keys, space bar)
 
-**Libraries used:** PDF.js 4.0.379 (Mozilla, via CDN), pdf-lib 1.17.1 (via CDN)
+Phase 5 (v4.1): Advanced Annotations
+- Signature tool (draw, save, reuse signatures)
+- Redaction (select text → flatten to image, with confirmation)
+- PageRenderer shared utility
 
-## Lessons Learned
+Phase 6 (v4.2): Security & Watermark
+- Password protection (decrypt locked PDFs, encrypt with owner/user passwords)
+- Watermark (configurable text, size, opacity, rotation, color)
 
-1. **SwiftUI's `fileImporter` is very slow on first use** — takes 20-30 seconds. Replaced with `NSOpenPanel` which opens instantly. Use NSOpenPanel for macOS apps.
+Phase 7 (v4.3): Export
+- Export pages as PNG or JPEG (72/150/300 DPI, page range selection)
 
-2. **App Sandbox entitlements matter** — started with `files.user-selected.read-only` which crashed on NSSavePanel. Changed to `files.user-selected.read-write` to allow saving merged PDFs.
+Phase 8 (v5.0): Compare
+- PDF comparison (side-by-side or difference overlay, sensitivity slider)
 
-3. **macOS Gatekeeper blocks unsigned apps** — `xattr -cr /Applications/MikePDFViewer.app` removes quarantine. Only needed once after install.
+**Key Files (25 Swift files):**
+- `MikePDFViewerApp.swift` — App entry, menus (File/Edit/View/Tools/Print)
+- `ContentView.swift` — Main viewer, all toolbar buttons, sheet/alert orchestration
+- `PDFKitView.swift` — NSViewRepresentable, notification handlers, SignatureAnnotation
+- `ThumbnailSidebar.swift` — Thumbnails with bookmarks, drag-to-reorder
+- `AnnotationToolbar.swift` — Highlight/underline/strikethrough/note/text tools
+- `BookmarkManager.swift` — Persistent bookmarks per file
+- `PageExtractView.swift` — Page selection grid and extract
+- `PresentationView.swift` — Fullscreen slideshow mode
+- `PageRenderer.swift` — Shared page-to-image rendering (PNG/JPEG)
+- `SignatureView.swift` + `SignatureManager.swift` — Draw/save/apply signatures
+- `RedactionService.swift` — Flatten-and-replace redaction
+- `PasswordSheet.swift` — Unlock + Encrypt sheets
+- `WatermarkService.swift` + `WatermarkSheet.swift` — Text watermark
+- `ExportImagesView.swift` — Export pages as images
+- `PDFCompareService.swift` + `PDFCompareView.swift` — Pixel-diff comparison
+- `PDFMergeView.swift`, `RecentFilesManager.swift`, `OCRService.swift`, `OCRView.swift`, `DOCXExporter.swift`
 
-4. **Setting default PDF app from command line** — installed `duti` via Homebrew, then `duti -s com.mikeashe.MikePDFViewer com.adobe.pdf all`.
+## Architecture Notes
 
-5. **App icons on macOS** — Asset catalog icons didn't show up reliably. Switched to generating a proper `.icns` file with `iconutil` and referencing it via `CFBundleIconFile` in Info.plist. Need to `killall Finder && killall Dock` and re-register with `lsregister` to flush icon cache.
-
-6. **Async PDF loading** — loading PDFDocument on the main thread blocks the UI. Moved to `DispatchQueue.global(qos: .userInitiated)` with main-thread callback.
+- **Cross-view communication**: FocusedSceneValue for read state (menu → focused window), NotificationCenter for actions
+- **Tab support**: ContentView owns `@State var pdfURL` (not a binding from App). Each window is independent.
+- **Thumbnail invalidation**: `documentVersion` counter increments on any mutation, triggers thumbnail regeneration
+- **Type-checker workaround**: ContentView body split into `viewWithAlerts` → `viewWithNotifications` → body to avoid "unable to type-check" errors
 
 ## Git Tags
 - `good-basic-pdf-viewer-mar5` — v1, confirmed working
-- `before-v2-features-mar5` — safety checkpoint before v2 work
+- `before-v2-features-mar5` — safety checkpoint
+- `before-save-print-features-mar11` — safety checkpoint before v3.0
+- `before-phase3-build-mar11` — safety checkpoint before Phase 3 build
 
 ## Repos
 - **macOS app:** https://github.com/MyCache63/MikePDFViewer
-- **Web version:** https://github.com/MyCache63/AIQuorumPlatform (route in app.py, template in web/templates/)
+- **Web version:** https://github.com/MyCache63/AIQuorumPlatform
 
 ## Build & Install Commands
 ```bash
@@ -81,8 +103,8 @@ killall Finder; killall Dock
 duti -s com.mikeashe.MikePDFViewer com.adobe.pdf all
 ```
 
-## What's Next (if continuing)
-- GitHub Release with downloadable .zip/.dmg for the native app
-- Add the PDF viewer link to the AIQuorum home page nav
-- Deploy AIQuorum to make the web version live
-- Possible features: annotations, bookmarks, dark mode PDF rendering, print support
+## Known Considerations
+- Redaction flattens pages to images (lossy, increases file size) — user is warned via confirmation dialog
+- PDF Compare is pixel-based at 150 DPI — may be slow for very large pages
+- Signature annotations use custom draw override — may not persist perfectly in all PDF readers
+- Password encryption uses PDFKit's built-in options — standard PDF encryption
