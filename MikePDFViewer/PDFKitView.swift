@@ -11,6 +11,11 @@ extension Notification.Name {
     static let pdfDocumentModified = Notification.Name("pdfDocumentModified")
     static let pdfToggleDarkMode = Notification.Name("pdfToggleDarkMode")
     static let pdfSetDisplayMode = Notification.Name("pdfSetDisplayMode")
+    static let pdfApplyHighlight = Notification.Name("pdfApplyHighlight")
+    static let pdfApplyUnderline = Notification.Name("pdfApplyUnderline")
+    static let pdfApplyStrikethrough = Notification.Name("pdfApplyStrikethrough")
+    static let pdfAddStickyNote = Notification.Name("pdfAddStickyNote")
+    static let pdfAddFreeText = Notification.Name("pdfAddFreeText")
 }
 
 struct PDFKitView: NSViewRepresentable {
@@ -92,6 +97,11 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleRotateRight), name: .pdfRotateRight, object: nil)
             nc.addObserver(self, selector: #selector(handleRotateLeft), name: .pdfRotateLeft, object: nil)
             nc.addObserver(self, selector: #selector(handleCopy), name: .pdfCopy, object: nil)
+            nc.addObserver(self, selector: #selector(handleHighlight), name: .pdfApplyHighlight, object: nil)
+            nc.addObserver(self, selector: #selector(handleUnderline), name: .pdfApplyUnderline, object: nil)
+            nc.addObserver(self, selector: #selector(handleStrikethrough), name: .pdfApplyStrikethrough, object: nil)
+            nc.addObserver(self, selector: #selector(handleAddStickyNote), name: .pdfAddStickyNote, object: nil)
+            nc.addObserver(self, selector: #selector(handleAddFreeText), name: .pdfAddFreeText, object: nil)
         }
 
         deinit {
@@ -135,6 +145,76 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func handleCopy(_ notification: Notification) {
             pdfView?.copy(nil)
+        }
+
+        @objc func handleHighlight(_ notification: Notification) {
+            applyTextMarkup(.highlight, from: notification)
+        }
+
+        @objc func handleUnderline(_ notification: Notification) {
+            applyTextMarkup(.underline, from: notification)
+        }
+
+        @objc func handleStrikethrough(_ notification: Notification) {
+            applyTextMarkup(.strikeOut, from: notification)
+        }
+
+        private func applyTextMarkup(_ type: PDFAnnotationSubtype, from notification: Notification) {
+            guard let pdfView = pdfView,
+                  let selection = pdfView.currentSelection else { return }
+            let color = notification.userInfo?["color"] as? NSColor ?? .yellow
+
+            for lineSel in selection.selectionsByLine() {
+                guard let page = lineSel.pages.first else { continue }
+                let bounds = lineSel.bounds(for: page)
+                let annotation = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
+                annotation.color = color
+                page.addAnnotation(annotation)
+            }
+            pdfView.clearSelection()
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        }
+
+        @objc func handleAddStickyNote(_ notification: Notification) {
+            guard let pdfView = pdfView,
+                  let page = pdfView.currentPage else { return }
+            let text = notification.userInfo?["text"] as? String ?? ""
+            let color = notification.userInfo?["color"] as? NSColor ?? .yellow
+
+            let visibleRect = pdfView.convert(pdfView.visibleRect, to: page)
+            let noteSize: CGFloat = 20
+            let bounds = CGRect(
+                x: visibleRect.midX - noteSize / 2,
+                y: visibleRect.midY - noteSize / 2,
+                width: noteSize,
+                height: noteSize
+            )
+            let annotation = PDFAnnotation(bounds: bounds, forType: .text, withProperties: nil)
+            annotation.contents = text
+            annotation.color = color
+            page.addAnnotation(annotation)
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        }
+
+        @objc func handleAddFreeText(_ notification: Notification) {
+            guard let pdfView = pdfView,
+                  let page = pdfView.currentPage else { return }
+            let text = notification.userInfo?["text"] as? String ?? ""
+
+            let visibleRect = pdfView.convert(pdfView.visibleRect, to: page)
+            let bounds = CGRect(
+                x: visibleRect.midX - 100,
+                y: visibleRect.midY - 20,
+                width: 200,
+                height: 40
+            )
+            let annotation = PDFAnnotation(bounds: bounds, forType: .freeText, withProperties: nil)
+            annotation.contents = text
+            annotation.font = NSFont.systemFont(ofSize: 14)
+            annotation.fontColor = .black
+            annotation.color = .clear
+            page.addAnnotation(annotation)
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
         }
 
         func search(_ text: String, in pdfView: PDFView) {

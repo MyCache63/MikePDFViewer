@@ -18,6 +18,7 @@
 		AA000009 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000021 /* OCRService.swift */; };
 		AA00000A /* OCRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* OCRView.swift */; };
 		AA00000B /* DOCXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000023 /* DOCXExporter.swift */; };
+		AA00000C /* AnnotationToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000024 /* AnnotationToolbar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 		AA000021 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		AA000022 /* OCRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRView.swift; sourceTree = "<group>"; };
 		AA000023 /* DOCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXExporter.swift; sourceTree = "<group>"; };
+		AA000024 /* AnnotationToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationToolbar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +74,7 @@
 				AA000021 /* OCRService.swift */,
 				AA000022 /* OCRView.swift */,
 				AA000023 /* DOCXExporter.swift */,
+				AA000024 /* AnnotationToolbar.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -163,6 +166,7 @@
 				AA000009 /* OCRService.swift in Sources */,
 				AA00000A /* OCRView.swift in Sources */,
 				AA00000B /* DOCXExporter.swift in Sources */,
+				AA00000C /* AnnotationToolbar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
