@@ -27,6 +27,74 @@ extension Notification.Name {
     static let pdfPrint = Notification.Name("pdfPrint")
 }
 
+// MARK: - Custom PDFView with print support and signature placement
+
+class PrintablePDFView: PDFView {
+    var pendingSignatureImage: NSImage?
+
+    // Respond to macOS system print action (File > Print / Cmd+P)
+    @objc override func printView(_ sender: Any?) {
+        performPrint()
+    }
+
+    // Also respond to printDocument: for NSDocument-style apps
+    @objc func printDocument(_ sender: Any?) {
+        performPrint()
+    }
+
+    func performPrint() {
+        guard let document = self.document else { return }
+        let printInfo = NSPrintInfo.shared
+        if let printOp = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
+            printOp.showsPrintPanel = true
+            printOp.showsProgressPanel = true
+            if let window = self.window {
+                printOp.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+            }
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        // If we have a pending signature, place it where the user clicked
+        if let sigImage = pendingSignatureImage {
+            let viewPoint = convert(event.locationInWindow, from: nil)
+            guard let page = page(for: viewPoint, nearest: true) else {
+                super.mouseDown(with: event)
+                return
+            }
+            let pagePoint = convert(viewPoint, to: page)
+
+            let sigWidth: CGFloat = 150
+            let sigHeight = sigWidth * (sigImage.size.height / max(sigImage.size.width, 1))
+            let bounds = CGRect(
+                x: pagePoint.x - sigWidth / 2,
+                y: pagePoint.y - sigHeight / 2,
+                width: sigWidth,
+                height: sigHeight
+            )
+
+            let annotation = SignatureAnnotation(bounds: bounds, image: sigImage)
+            page.addAnnotation(annotation)
+            pendingSignatureImage = nil
+            NSCursor.arrow.set()
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            return
+        }
+
+        super.mouseDown(with: event)
+    }
+
+    // Show crosshair cursor when in signature placement mode
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if pendingSignatureImage != nil {
+            addCursorRect(bounds, cursor: .crosshair)
+        }
+    }
+}
+
+// MARK: - PDFKitView
+
 struct PDFKitView: NSViewRepresentable {
     let document: PDFDocument
     @Binding var currentPage: Int
@@ -38,8 +106,8 @@ struct PDFKitView: NSViewRepresentable {
         Coordinator(self)
     }
 
-    func makeNSView(context: Context) -> PDFView {
-        let pdfView = PDFView()
+    func makeNSView(context: Context) -> PrintablePDFView {
+        let pdfView = PrintablePDFView()
         pdfView.autoScales = true
         pdfView.displayMode = displayMode
         pdfView.displayDirection = .vertical
@@ -62,7 +130,7 @@ struct PDFKitView: NSViewRepresentable {
         return pdfView
     }
 
-    func updateNSView(_ pdfView: PDFView, context: Context) {
+    func updateNSView(_ pdfView: PrintablePDFView, context: Context) {
         if pdfView.document !== document {
             pdfView.document = document
         }
@@ -92,7 +160,7 @@ struct PDFKitView: NSViewRepresentable {
 
     class Coordinator: NSObject {
         var parent: PDFKitView
-        weak var pdfView: PDFView?
+        weak var pdfView: PrintablePDFView?
         private var lastSearchText = ""
 
         init(_ parent: PDFKitView) {
@@ -113,6 +181,7 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleAddFreeText), name: .pdfAddFreeText, object: nil)
             nc.addObserver(self, selector: #selector(handleApplySignature), name: .pdfApplySignature, object: nil)
             nc.addObserver(self, selector: #selector(handleRedactSelection), name: .pdfRedactSelection, object: nil)
+            nc.addObserver(self, selector: #selector(handlePrint), name: .pdfPrint, object: nil)
         }
 
         deinit {
@@ -230,22 +299,12 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func handleApplySignature(_ notification: Notification) {
             guard let pdfView = pdfView,
-                  let page = pdfView.currentPage,
                   let image = notification.userInfo?["image"] as? NSImage else { return }
 
-            let visibleRect = pdfView.convert(pdfView.visibleRect, to: page)
-            let sigWidth: CGFloat = 150
-            let sigHeight = sigWidth * (image.size.height / max(image.size.width, 1))
-            let bounds = CGRect(
-                x: visibleRect.midX - sigWidth / 2,
-                y: visibleRect.midY - sigHeight / 2,
-                width: sigWidth,
-                height: sigHeight
-            )
-
-            let annotation = SignatureAnnotation(bounds: bounds, image: image)
-            page.addAnnotation(annotation)
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            // Enter signature placement mode — next click places it
+            pdfView.pendingSignatureImage = image
+            NSCursor.crosshair.set()
+            pdfView.window?.invalidateCursorRects(for: pdfView)
         }
 
         @objc func handleRedactSelection(_ notification: Notification) {
@@ -258,6 +317,10 @@ struct PDFKitView: NSViewRepresentable {
                 pdfView.clearSelection()
                 NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
             }
+        }
+
+        @objc func handlePrint(_ notification: Notification) {
+            pdfView?.performPrint()
         }
 
         func search(_ text: String, in pdfView: PDFView) {

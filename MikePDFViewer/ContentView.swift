@@ -301,7 +301,7 @@ struct ContentView: View {
             .help("Save As (Shift+Cmd+S)")
             .disabled(pdfDocument == nil)
 
-        Button { printDocument() } label: { Image(systemName: "printer") }
+        Button { NotificationCenter.default.post(name: .pdfPrint, object: nil) } label: { Image(systemName: "printer") }
             .help("Print (Cmd+P)")
             .disabled(pdfDocument == nil)
 

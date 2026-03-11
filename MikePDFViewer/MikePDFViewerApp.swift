@@ -113,14 +113,9 @@ struct MikePDFViewerApp: App {
                 .disabled(focusedDocument == nil)
             }
 
-            // MARK: Print
-            CommandGroup(replacing: .printItem) {
-                Button("Print...") {
-                    NotificationCenter.default.post(name: .pdfPrint, object: nil)
-                }
-                .keyboardShortcut("p", modifiers: .command)
-                .disabled(focusedDocument == nil)
-            }
+            // Print is handled by PrintablePDFView in the responder chain.
+            // The system's default File > Print menu item sends printView:
+            // to the first responder, which PrintablePDFView handles.
 
             // MARK: Tools Menu
             CommandMenu("Tools") {
@@ -239,16 +234,6 @@ struct MikePDFViewerApp: App {
         panel.nameFieldStringValue = focusedURL?.lastPathComponent ?? "Untitled.pdf"
         if panel.runModal() == .OK, let url = panel.url {
             document.write(to: url)
-        }
-    }
-
-    private func printDocument() {
-        guard let document = focusedDocument else { return }
-        let printInfo = NSPrintInfo.shared
-        if let printOperation = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
-            printOperation.showsPrintPanel = true
-            printOperation.showsProgressPanel = true
-            printOperation.run()
         }
     }
 
