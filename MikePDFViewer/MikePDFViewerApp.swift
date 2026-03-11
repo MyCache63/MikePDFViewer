@@ -116,7 +116,7 @@ struct MikePDFViewerApp: App {
             // MARK: Print
             CommandGroup(replacing: .printItem) {
                 Button("Print...") {
-                    printDocument()
+                    NotificationCenter.default.post(name: .pdfPrint, object: nil)
                 }
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(focusedDocument == nil)

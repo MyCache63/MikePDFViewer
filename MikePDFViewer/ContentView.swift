@@ -142,6 +142,9 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
                 if pdfDocument != nil { showPresentation = true }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
+                printDocument()
+            }
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
             .onAppear { loadDocument(from: pdfURL) }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
@@ -582,7 +585,11 @@ struct ContentView: View {
         if let printOperation = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
             printOperation.showsPrintPanel = true
             printOperation.showsProgressPanel = true
-            printOperation.run()
+            if let window = NSApp.keyWindow {
+                printOperation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+            } else {
+                printOperation.run()
+            }
         }
     }
 

@@ -24,6 +24,7 @@ extension Notification.Name {
     static let pdfShowMerge = Notification.Name("pdfShowMerge")
     static let pdfApplySignature = Notification.Name("pdfApplySignature")
     static let pdfRedactSelection = Notification.Name("pdfRedactSelection")
+    static let pdfPrint = Notification.Name("pdfPrint")
 }
 
 struct PDFKitView: NSViewRepresentable {

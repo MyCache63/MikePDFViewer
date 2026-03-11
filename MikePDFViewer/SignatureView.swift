@@ -18,7 +18,7 @@ struct SignatureView: View {
             Divider()
             footer
         }
-        .frame(width: 500, height: 450)
+        .frame(width: 520, height: 480)
     }
 
     @State private var drawingView = SignatureDrawingView()
@@ -74,51 +74,61 @@ struct SignatureView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(signatureManager.savedSignatures) { sig in
-                        VStack(spacing: 4) {
-                            if let image = sig.image {
-                                Image(nsImage: image)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 50)
-                                    .background(Color.white)
-                                    .border(Color.gray.opacity(0.3))
-                                    .onTapGesture {
-                                        onApply(image)
-                                        dismiss()
-                                    }
-                            }
-                            HStack(spacing: 4) {
-                                Text(sig.name)
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                Button {
-                                    signatureManager.delete(sig.id)
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.caption2)
-                                        .foregroundStyle(.red)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .frame(width: 100)
-                    }
-                }
-                .padding(.horizontal)
-            }
-            .frame(height: signatureManager.savedSignatures.isEmpty ? 30 : 80)
-
             if signatureManager.savedSignatures.isEmpty {
-                Text("No saved signatures. Draw and save one above, or click Apply to use the current drawing.")
+                Text("No saved signatures yet. Draw one above and click Save Signature.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal)
+                    .frame(height: 30)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(signatureManager.savedSignatures) { sig in
+                            savedSignatureCard(sig)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .frame(height: 100)
             }
         }
         .padding(.vertical, 8)
+    }
+
+    private func savedSignatureCard(_ sig: SignatureManager.SavedSignature) -> some View {
+        VStack(spacing: 4) {
+            if let image = sig.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 40)
+                    .background(Color.white)
+                    .border(Color.gray.opacity(0.3))
+            }
+            Text(sig.name)
+                .font(.caption2)
+                .lineLimit(1)
+            HStack(spacing: 6) {
+                Button("Use") {
+                    if let image = sig.image {
+                        onApply(image)
+                        dismiss()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button {
+                    signatureManager.delete(sig.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(width: 110)
     }
 
     private var footer: some View {
@@ -126,7 +136,11 @@ struct SignatureView: View {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
             Spacer()
-            Button("Apply Drawing") {
+            Text("Draw above and click Apply, or click Use on a saved signature")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Spacer()
+            Button("Apply Current Drawing") {
                 if let image = drawingView.getImage() {
                     onApply(image)
                     dismiss()
