@@ -13,6 +13,12 @@ struct ContentView: View {
     @State private var showMergeSheet = false
     @State private var sidebarVisible = true
     @State private var showOCRSheet = false
+    @State private var showGoToPage = false
+    @State private var goToPageText: String = ""
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -47,6 +53,8 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 120, ideal: 160, max: 250)
+        .navigationTitle(pdfURL?.lastPathComponent ?? "MikePDFViewer")
+        .navigationSubtitle("v\(appVersion)")
         .frame(minWidth: 700, minHeight: 500)
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
@@ -58,12 +66,58 @@ struct ContentView: View {
                 .help("Open PDF (Cmd+O)")
 
                 Button {
+                    saveDocumentAs()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .help("Save As (Shift+Cmd+S)")
+                .disabled(pdfDocument == nil)
+
+                Button {
+                    printDocument()
+                } label: {
+                    Image(systemName: "printer")
+                }
+                .help("Print (Cmd+P)")
+                .disabled(pdfDocument == nil)
+
+                Divider()
+
+                Button {
                     showSearch.toggle()
                     if !showSearch { searchText = "" }
                 } label: {
                     Image(systemName: "magnifyingglass")
                 }
                 .help("Search (Cmd+F)")
+
+                Divider()
+
+                Button {
+                    NotificationCenter.default.post(name: .pdfZoomOut, object: nil)
+                } label: {
+                    Image(systemName: "minus.magnifyingglass")
+                }
+                .help("Zoom Out (Cmd+-)")
+                .disabled(pdfDocument == nil)
+
+                Button {
+                    NotificationCenter.default.post(name: .pdfZoomIn, object: nil)
+                } label: {
+                    Image(systemName: "plus.magnifyingglass")
+                }
+                .help("Zoom In (Cmd++)")
+                .disabled(pdfDocument == nil)
+
+                Button {
+                    NotificationCenter.default.post(name: .pdfZoomFit, object: nil)
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                }
+                .help("Zoom to Fit (Cmd+0)")
+                .disabled(pdfDocument == nil)
+
+                Divider()
 
                 Button {
                     showOCRSheet = true
@@ -81,13 +135,29 @@ struct ContentView: View {
                 .help("Merge PDFs")
 
                 if totalPages > 0 {
-                    Text("Page \(currentPage + 1) of \(totalPages)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 100)
+                    Button {
+                        goToPageText = ""
+                        showGoToPage = true
+                    } label: {
+                        Text("Page \(currentPage + 1) of \(totalPages)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Go to Page (Cmd+G)")
+                    .popover(isPresented: $showGoToPage) {
+                        goToPagePopover
+                    }
                 }
+
+                Text("v\(appVersion)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 8)
             }
         }
+        .focusedSceneValue(\.pdfDocument, pdfDocument)
+        .focusedSceneValue(\.pdfFileURL, pdfURL)
         .onChange(of: pdfURL) { _, newURL in
             loadDocument(from: newURL)
         }
@@ -107,8 +177,39 @@ struct ContentView: View {
         .background(KeyboardHandler(
             onFind: { showSearch.toggle(); if !showSearch { searchText = "" } },
             onEscape: { showSearch = false; searchText = "" },
-            onOCR: { if pdfDocument != nil { showOCRSheet = true } }
+            onOCR: { if pdfDocument != nil { showOCRSheet = true } },
+            onGoToPage: { if totalPages > 0 { goToPageText = ""; showGoToPage = true } }
         ))
+    }
+
+    private var goToPagePopover: some View {
+        VStack(spacing: 12) {
+            Text("Go to Page")
+                .font(.headline)
+            HStack {
+                TextField("Page number", text: $goToPageText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 80)
+                    .onSubmit { navigateToPage() }
+                Text("of \(totalPages)")
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Button("Cancel") { showGoToPage = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Go") { navigateToPage() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(Int(goToPageText) == nil)
+            }
+        }
+        .padding()
+    }
+
+    private func navigateToPage() {
+        guard let pageNum = Int(goToPageText),
+              pageNum >= 1, pageNum <= totalPages else { return }
+        currentPage = pageNum - 1
+        showGoToPage = false
     }
 
     private var emptyState: some View {
@@ -190,6 +291,26 @@ struct ContentView: View {
         }
     }
 
+    private func saveDocumentAs() {
+        guard let document = pdfDocument else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = pdfURL?.lastPathComponent ?? "Untitled.pdf"
+        if panel.runModal() == .OK, let url = panel.url {
+            document.write(to: url)
+        }
+    }
+
+    private func printDocument() {
+        guard let document = pdfDocument else { return }
+        let printInfo = NSPrintInfo.shared
+        if let printOperation = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
+            printOperation.showsPrintPanel = true
+            printOperation.showsProgressPanel = true
+            printOperation.run()
+        }
+    }
+
     private func loadDocument(from url: URL?) {
         guard let url else {
             pdfDocument = nil
@@ -212,12 +333,14 @@ struct KeyboardHandler: NSViewRepresentable {
     let onFind: () -> Void
     let onEscape: () -> Void
     let onOCR: () -> Void
+    let onGoToPage: () -> Void
 
     func makeNSView(context: Context) -> KeyCatcherView {
         let view = KeyCatcherView()
         view.onFind = onFind
         view.onEscape = onEscape
         view.onOCR = onOCR
+        view.onGoToPage = onGoToPage
         return view
     }
 
@@ -225,6 +348,7 @@ struct KeyboardHandler: NSViewRepresentable {
         nsView.onFind = onFind
         nsView.onEscape = onEscape
         nsView.onOCR = onOCR
+        nsView.onGoToPage = onGoToPage
     }
 }
 
@@ -232,6 +356,7 @@ class KeyCatcherView: NSView {
     var onFind: (() -> Void)?
     var onEscape: (() -> Void)?
     var onOCR: (() -> Void)?
+    var onGoToPage: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -241,6 +366,8 @@ class KeyCatcherView: NSView {
             onFind?()
         } else if mods == [.command, .shift] && event.charactersIgnoringModifiers == "R" {
             onOCR?()
+        } else if mods == [.command] && event.charactersIgnoringModifiers == "g" {
+            onGoToPage?()
         } else if event.keyCode == 53 {
             onEscape?()
         } else {

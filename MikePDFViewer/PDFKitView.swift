@@ -1,6 +1,12 @@
 import SwiftUI
 import PDFKit
 
+extension Notification.Name {
+    static let pdfZoomIn = Notification.Name("pdfZoomIn")
+    static let pdfZoomOut = Notification.Name("pdfZoomOut")
+    static let pdfZoomFit = Notification.Name("pdfZoomFit")
+}
+
 struct PDFKitView: NSViewRepresentable {
     let document: PDFDocument
     @Binding var currentPage: Int
@@ -33,13 +39,11 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.document = document
         }
 
-        // Navigate to page if changed externally (e.g. thumbnail click)
         if let page = document.page(at: currentPage),
            pdfView.currentPage !== page {
             pdfView.go(to: page)
         }
 
-        // Handle search
         context.coordinator.search(searchText, in: pdfView)
     }
 
@@ -47,10 +51,18 @@ struct PDFKitView: NSViewRepresentable {
         var parent: PDFKitView
         weak var pdfView: PDFView?
         private var lastSearchText = ""
-        private var currentSelections: [PDFSelection] = []
 
         init(_ parent: PDFKitView) {
             self.parent = parent
+            super.init()
+
+            NotificationCenter.default.addObserver(self, selector: #selector(handleZoomIn), name: .pdfZoomIn, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleZoomOut), name: .pdfZoomOut, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleZoomFit), name: .pdfZoomFit, object: nil)
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
         }
 
         @objc func pageChanged(_ notification: Notification) {
@@ -62,11 +74,22 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
+        @objc func handleZoomIn(_ notification: Notification) {
+            pdfView?.zoomIn(nil)
+        }
+
+        @objc func handleZoomOut(_ notification: Notification) {
+            pdfView?.zoomOut(nil)
+        }
+
+        @objc func handleZoomFit(_ notification: Notification) {
+            pdfView?.autoScales = true
+        }
+
         func search(_ text: String, in pdfView: PDFView) {
             guard text != lastSearchText else { return }
             lastSearchText = text
 
-            // Clear previous highlights
             pdfView.highlightedSelections = nil
 
             guard !text.isEmpty, let document = pdfView.document else { return }
@@ -74,7 +97,6 @@ struct PDFKitView: NSViewRepresentable {
             let selections = document.findString(text, withOptions: .caseInsensitive)
             if !selections.isEmpty {
                 pdfView.highlightedSelections = selections
-                // Go to first result
                 if let first = selections.first {
                     pdfView.go(to: first)
                 }
