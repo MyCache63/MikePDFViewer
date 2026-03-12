@@ -76,8 +76,11 @@ class PrintablePDFView: PDFView {
         if let printOp = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
             printOp.showsPrintPanel = true
             printOp.showsProgressPanel = true
-            if let window = self.window {
+            if let window = self.window ?? NSApp.keyWindow {
                 printOp.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+            } else {
+                // Last resort: run as modal dialog without a parent window
+                printOp.run()
             }
         }
     }
