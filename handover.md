@@ -1,8 +1,14 @@
 # MikePDFViewer Handover — March 11, 2026
 
-## Current State: v5.0 — All 20 Features Implemented
+## Current State: v5.2 — All 20 Features + Fixes
 
-**BUILD STATUS: Builds successfully, not yet device-tested**
+**BUILD STATUS: v5.2 builds successfully, installed to /Applications**
+**Tested so far:** User confirmed v5.1 had working signature placement but print still showed "This application does not support printing." Root cause found (March 11): missing `com.apple.security.print` entitlement in the App Sandbox. Fixed in bb506eb. Awaiting user testing.
+
+### Fixes since v5.0:
+- **Print**: ROOT CAUSE was missing `com.apple.security.print` sandbox entitlement. The app had App Sandbox enabled but never declared the print capability, so macOS blocked all printing at the system level regardless of code-level approaches. Fixed by adding the entitlement and improving performPrint() fallback to NSApp.keyWindow. (bb506eb)
+- **Signature UX**: Changed from auto-center placement to click-to-place mode with crosshair cursor. Added visible "Use" button on saved signatures.
+- **Undo**: All annotations (highlight, underline, strikethrough, sticky note, free text, signature) now support Cmd+Z undo via `addAnnotationWithUndo()` on PrintablePDFView
 
 ## What We Built
 
@@ -91,8 +97,9 @@ Phase 8 (v5.0): Compare
 # Build release
 xcodebuild -project MikePDFViewer.xcodeproj -scheme MikePDFViewer -configuration Release clean build
 
-# Install to Applications
-cp -R ~/Library/Developer/Xcode/DerivedData/MikePDFViewer-*/Build/Products/Release/MikePDFViewer.app /Applications/MikePDFViewer.app
+# Install to Applications (MUST delete old app first — cp -R merges instead of replacing)
+rm -rf /Applications/MikePDFViewer.app
+cp -R ~/Library/Developer/Xcode/DerivedData/MikePDFViewer-*/Build/Products/Debug/MikePDFViewer.app /Applications/MikePDFViewer.app
 xattr -cr /Applications/MikePDFViewer.app
 
 # Re-register icon with Finder
