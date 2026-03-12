@@ -116,7 +116,7 @@ struct MikePDFViewerApp: App {
             // MARK: Print
             CommandGroup(replacing: .printItem) {
                 Button("Print...") {
-                    NotificationCenter.default.post(name: .pdfPrint, object: nil)
+                    PrintablePDFView.current?.performPrint()
                 }
                 .keyboardShortcut("p", modifiers: .command)
             }

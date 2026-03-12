@@ -25,13 +25,28 @@ extension Notification.Name {
     static let pdfApplySignature = Notification.Name("pdfApplySignature")
     static let pdfRedactSelection = Notification.Name("pdfRedactSelection")
     static let pdfPrint = Notification.Name("pdfPrint")
+    // Posted when signature editing mode changes (userInfo: ["editing": Bool])
+    static let pdfSignatureEditingChanged = Notification.Name("pdfSignatureEditingChanged")
 }
 
-// MARK: - Custom PDFView with print support and signature placement
+// MARK: - Custom PDFView with print support and signature editing
 
 class PrintablePDFView: PDFView {
-    var pendingSignatureImage: NSImage?
-    var signatureWidth: CGFloat = 200
+    // Static reference so print can be called reliably from anywhere
+    static weak var current: PrintablePDFView?
+
+    // Signature editing state
+    private(set) var activeSignature: SignatureAnnotation?
+    private var activePage: PDFPage?
+    private var isDragging = false
+    private var isResizing = false
+    private var dragOffset: CGPoint = .zero
+    private var resizeCorner: Int = -1 // 0=BL, 1=BR, 2=TL, 3=TR
+    private var initialBounds: CGRect = .zero
+    private var initialMousePoint: CGPoint = .zero
+
+    // Handle size for resize corners (in page points)
+    private let handleHitSize: CGFloat = 14
 
     // Respond to macOS system print action (File > Print / Cmd+P)
     @objc override func printView(_ sender: Any?) {
@@ -66,40 +81,186 @@ class PrintablePDFView: PDFView {
         NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
     }
 
+    /// Place a signature at center of visible area and enter editing mode
+    func placeSignature(image: NSImage) {
+        guard let page = currentPage else { return }
+        let visibleRect = convert(visibleRect, to: page)
+
+        let sigWidth: CGFloat = 200
+        let sigHeight = sigWidth * (image.size.height / max(image.size.width, 1))
+        let bounds = CGRect(
+            x: visibleRect.midX - sigWidth / 2,
+            y: visibleRect.midY - sigHeight / 2,
+            width: sigWidth,
+            height: sigHeight
+        )
+
+        let annotation = SignatureAnnotation(bounds: bounds, image: image)
+        annotation.isEditing = true
+        addAnnotationWithUndo(annotation, to: page)
+
+        activeSignature = annotation
+        activePage = page
+        setNeedsDisplay(self.bounds)
+
+        NotificationCenter.default.post(
+            name: .pdfSignatureEditingChanged,
+            object: nil,
+            userInfo: ["editing": true]
+        )
+    }
+
+    /// Finish editing the active signature
+    func finalizeSignature() {
+        guard let sig = activeSignature else { return }
+        sig.isEditing = false
+        activeSignature = nil
+        activePage = nil
+        setNeedsDisplay(bounds)
+        NotificationCenter.default.post(
+            name: .pdfSignatureEditingChanged,
+            object: nil,
+            userInfo: ["editing": false]
+        )
+    }
+
+    /// Cancel/delete the active signature
+    func cancelSignature() {
+        guard let sig = activeSignature, let page = activePage else { return }
+        page.removeAnnotation(sig)
+        activeSignature = nil
+        activePage = nil
+        setNeedsDisplay(bounds)
+        NotificationCenter.default.post(
+            name: .pdfSignatureEditingChanged,
+            object: nil,
+            userInfo: ["editing": false]
+        )
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+    }
+
+    // MARK: - Mouse handling for signature drag/resize
+
     override func mouseDown(with event: NSEvent) {
-        // If we have a pending signature, place it where the user clicked
-        if let sigImage = pendingSignatureImage {
-            let viewPoint = convert(event.locationInWindow, from: nil)
-            guard let page = page(for: viewPoint, nearest: true) else {
-                super.mouseDown(with: event)
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        guard let page = page(for: viewPoint, nearest: true) else {
+            super.mouseDown(with: event)
+            return
+        }
+        let pagePoint = convert(viewPoint, to: page)
+
+        // If editing a signature, check for resize handles or drag
+        if let active = activeSignature, active.isEditing {
+            // Check resize handles (corners)
+            let corners = [
+                CGPoint(x: active.bounds.minX, y: active.bounds.minY), // 0: BL
+                CGPoint(x: active.bounds.maxX, y: active.bounds.minY), // 1: BR
+                CGPoint(x: active.bounds.minX, y: active.bounds.maxY), // 2: TL
+                CGPoint(x: active.bounds.maxX, y: active.bounds.maxY), // 3: TR
+            ]
+
+            for (i, corner) in corners.enumerated() {
+                if abs(pagePoint.x - corner.x) < handleHitSize &&
+                   abs(pagePoint.y - corner.y) < handleHitSize {
+                    isResizing = true
+                    resizeCorner = i
+                    initialBounds = active.bounds
+                    initialMousePoint = pagePoint
+                    return
+                }
+            }
+
+            // Check if clicking inside annotation to drag
+            if active.bounds.contains(pagePoint) {
+                isDragging = true
+                dragOffset = CGPoint(
+                    x: pagePoint.x - active.bounds.origin.x,
+                    y: pagePoint.y - active.bounds.origin.y
+                )
                 return
             }
-            let pagePoint = convert(viewPoint, to: page)
 
-            let sigWidth = signatureWidth
-            let sigHeight = sigWidth * (sigImage.size.height / max(sigImage.size.width, 1))
-            let bounds = CGRect(
-                x: pagePoint.x - sigWidth / 2,
-                y: pagePoint.y - sigHeight / 2,
-                width: sigWidth,
-                height: sigHeight
-            )
+            // Clicked elsewhere — finalize
+            finalizeSignature()
+        }
 
-            let annotation = SignatureAnnotation(bounds: bounds, image: sigImage)
-            addAnnotationWithUndo(annotation, to: page)
-            pendingSignatureImage = nil
-            NSCursor.arrow.set()
-            return
+        // Check if clicking on any existing SignatureAnnotation to select it
+        for annotation in page.annotations {
+            if let sigAnnotation = annotation as? SignatureAnnotation,
+               sigAnnotation.bounds.contains(pagePoint) {
+                activeSignature = sigAnnotation
+                activePage = page
+                sigAnnotation.isEditing = true
+                setNeedsDisplay(bounds)
+                NotificationCenter.default.post(
+                    name: .pdfSignatureEditingChanged,
+                    object: nil,
+                    userInfo: ["editing": true]
+                )
+                return
+            }
         }
 
         super.mouseDown(with: event)
     }
 
-    // Show crosshair cursor when in signature placement mode
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        if pendingSignatureImage != nil {
-            addCursorRect(bounds, cursor: .crosshair)
+    override func mouseDragged(with event: NSEvent) {
+        guard let active = activeSignature, let page = activePage else {
+            super.mouseDragged(with: event)
+            return
+        }
+
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        let pagePoint = convert(viewPoint, to: page)
+
+        if isDragging {
+            let newOrigin = CGPoint(
+                x: pagePoint.x - dragOffset.x,
+                y: pagePoint.y - dragOffset.y
+            )
+            active.bounds = CGRect(origin: newOrigin, size: active.bounds.size)
+            setNeedsDisplay(bounds)
+        } else if isResizing {
+            var newBounds = initialBounds
+            let minW: CGFloat = 40
+            let minH: CGFloat = 20
+
+            switch resizeCorner {
+            case 3: // TR — drag right and up
+                newBounds.size.width = max(minW, pagePoint.x - initialBounds.minX)
+                newBounds.size.height = max(minH, pagePoint.y - initialBounds.minY)
+            case 1: // BR — drag right and down
+                newBounds.size.width = max(minW, pagePoint.x - initialBounds.minX)
+                let newH = max(minH, initialBounds.maxY - pagePoint.y)
+                newBounds.origin.y = initialBounds.maxY - newH
+                newBounds.size.height = newH
+            case 2: // TL — drag left and up
+                let newW = max(minW, initialBounds.maxX - pagePoint.x)
+                newBounds.origin.x = initialBounds.maxX - newW
+                newBounds.size.width = newW
+                newBounds.size.height = max(minH, pagePoint.y - initialBounds.minY)
+            case 0: // BL — drag left and down
+                let newW = max(minW, initialBounds.maxX - pagePoint.x)
+                let newH = max(minH, initialBounds.maxY - pagePoint.y)
+                newBounds.origin.x = initialBounds.maxX - newW
+                newBounds.origin.y = initialBounds.maxY - newH
+                newBounds.size.width = newW
+                newBounds.size.height = newH
+            default:
+                break
+            }
+
+            active.bounds = newBounds
+            setNeedsDisplay(bounds)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isDragging || isResizing {
+            isDragging = false
+            isResizing = false
+        } else {
+            super.mouseUp(with: event)
         }
     }
 }
@@ -138,6 +299,7 @@ struct PDFKitView: NSViewRepresentable {
         )
 
         context.coordinator.pdfView = pdfView
+        PrintablePDFView.current = pdfView
         return pdfView
     }
 
@@ -305,31 +467,9 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         @objc func handleApplySignature(_ notification: Notification) {
-            guard let pdfView = pdfView else { return }
-
-            // Handle cancel
-            if notification.userInfo?["cancel"] as? Bool == true {
-                pdfView.pendingSignatureImage = nil
-                NSCursor.arrow.set()
-                pdfView.window?.invalidateCursorRects(for: pdfView)
-                return
-            }
-
-            // Handle width-only update (slider changed)
-            if let width = notification.userInfo?["widthOnly"] as? CGFloat {
-                pdfView.signatureWidth = width
-                return
-            }
-
-            guard let image = notification.userInfo?["image"] as? NSImage else { return }
-
-            // Enter signature placement mode — next click places it
-            if let width = notification.userInfo?["width"] as? CGFloat {
-                pdfView.signatureWidth = width
-            }
-            pdfView.pendingSignatureImage = image
-            NSCursor.crosshair.set()
-            pdfView.window?.invalidateCursorRects(for: pdfView)
+            guard let pdfView = pdfView,
+                  let image = notification.userInfo?["image"] as? NSImage else { return }
+            pdfView.placeSignature(image: image)
         }
 
         @objc func handleRedactSelection(_ notification: Notification) {
@@ -367,6 +507,7 @@ struct PDFKitView: NSViewRepresentable {
 
 class SignatureAnnotation: PDFAnnotation {
     private var signatureImage: NSImage
+    var isEditing: Bool = false
 
     init(bounds: CGRect, image: NSImage) {
         self.signatureImage = image
@@ -382,5 +523,37 @@ class SignatureAnnotation: PDFAnnotation {
         // Do NOT call super.draw() — it renders the default stamp X pattern
         guard let cgImage = signatureImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
         context.draw(cgImage, in: bounds)
+
+        if isEditing {
+            // Draw dashed selection border
+            context.setStrokeColor(NSColor.systemBlue.cgColor)
+            context.setLineWidth(1.5)
+            context.setLineDash(phase: 0, lengths: [4, 3])
+            context.stroke(bounds)
+
+            // Draw corner handles
+            let handleSize: CGFloat = 8
+            context.setLineDash(phase: 0, lengths: [])
+            context.setFillColor(NSColor.white.cgColor)
+            context.setStrokeColor(NSColor.systemBlue.cgColor)
+            context.setLineWidth(1.5)
+
+            let corners = [
+                CGPoint(x: bounds.minX, y: bounds.minY),
+                CGPoint(x: bounds.maxX, y: bounds.minY),
+                CGPoint(x: bounds.minX, y: bounds.maxY),
+                CGPoint(x: bounds.maxX, y: bounds.maxY),
+            ]
+            for corner in corners {
+                let rect = CGRect(
+                    x: corner.x - handleSize / 2,
+                    y: corner.y - handleSize / 2,
+                    width: handleSize,
+                    height: handleSize
+                )
+                context.fillEllipse(in: rect)
+                context.strokeEllipse(in: rect)
+            }
+        }
     }
 }

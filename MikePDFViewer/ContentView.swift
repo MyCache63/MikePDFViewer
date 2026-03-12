@@ -36,8 +36,7 @@ struct ContentView: View {
     @State private var showExportImages = false
     @State private var showCompareSheet = false
     @State private var pendingSignatureImage: NSImage?
-    @State private var signaturePlacementMode = false
-    @State private var signatureWidth: CGFloat = 200
+    @State private var signatureEditingMode = false
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -70,11 +69,10 @@ struct ContentView: View {
             .onChange(of: showSignatureSheet) { _, isShowing in
                 if !isShowing, let image = pendingSignatureImage {
                     pendingSignatureImage = nil
-                    signaturePlacementMode = true
                     NotificationCenter.default.post(
                         name: .pdfApplySignature,
                         object: nil,
-                        userInfo: ["image": image, "width": signatureWidth]
+                        userInfo: ["image": image]
                     )
                 }
             }
@@ -118,7 +116,9 @@ struct ContentView: View {
         viewWithAlerts
             .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
                 documentVersion += 1
-                signaturePlacementMode = false
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfSignatureEditingChanged)) { notification in
+                signatureEditingMode = notification.userInfo?["editing"] as? Bool ?? false
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleDarkMode)) { _ in
                 darkModeReading.toggle()
@@ -154,7 +154,7 @@ struct ContentView: View {
                 if pdfDocument != nil { showPresentation = true }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
-                printDocument()
+                PrintablePDFView.current?.performPrint()
             }
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
             .onAppear { loadDocument(from: pdfURL) }
@@ -302,35 +302,23 @@ struct ContentView: View {
                 searchBar
             }
 
-            if signaturePlacementMode {
+            if signatureEditingMode {
                 VStack {
                     HStack(spacing: 12) {
-                        Image(systemName: "hand.tap")
-                        Text("Click to place signature")
+                        Image(systemName: "signature")
+                        Text("Drag to move, drag corners to resize")
                             .fontWeight(.medium)
-                        Text("Size:")
-                            .foregroundStyle(.secondary)
-                        Slider(value: $signatureWidth, in: 80...400, step: 10) {
-                            Text("Size")
+                        Button("Done") {
+                            PrintablePDFView.current?.finalizeSignature()
                         }
-                        .frame(width: 120)
-                        .onChange(of: signatureWidth) { _, newWidth in
-                            NotificationCenter.default.post(
-                                name: .pdfApplySignature,
-                                object: nil,
-                                userInfo: ["widthOnly": newWidth]
-                            )
-                        }
-                        Text("\(Int(signatureWidth))pt")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 40)
-                        Button("Cancel") {
-                            signaturePlacementMode = false
-                            NotificationCenter.default.post(name: .pdfApplySignature, object: nil, userInfo: ["cancel": true])
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        Button("Delete") {
+                            PrintablePDFView.current?.cancelSignature()
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .foregroundStyle(.red)
                     }
                     .padding(10)
                     .background(.regularMaterial)
@@ -354,7 +342,7 @@ struct ContentView: View {
             .help("Save As (Shift+Cmd+S)")
             .disabled(pdfDocument == nil)
 
-        Button { NotificationCenter.default.post(name: .pdfPrint, object: nil) } label: { Image(systemName: "printer") }
+        Button { PrintablePDFView.current?.performPrint() } label: { Image(systemName: "printer") }
             .help("Print (Cmd+P)")
             .disabled(pdfDocument == nil)
 
@@ -629,20 +617,6 @@ struct ContentView: View {
         panel.nameFieldStringValue = pdfURL?.lastPathComponent ?? "Untitled.pdf"
         if panel.runModal() == .OK, let url = panel.url {
             document.write(to: url)
-        }
-    }
-
-    private func printDocument() {
-        guard let document = pdfDocument else { return }
-        let printInfo = NSPrintInfo.shared
-        if let printOperation = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) {
-            printOperation.showsPrintPanel = true
-            printOperation.showsProgressPanel = true
-            if let window = NSApp.keyWindow {
-                printOperation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
-            } else {
-                printOperation.run()
-            }
         }
     }
 
