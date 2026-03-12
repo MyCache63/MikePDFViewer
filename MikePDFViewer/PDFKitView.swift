@@ -191,7 +191,6 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleAddFreeText), name: .pdfAddFreeText, object: nil)
             nc.addObserver(self, selector: #selector(handleApplySignature), name: .pdfApplySignature, object: nil)
             nc.addObserver(self, selector: #selector(handleRedactSelection), name: .pdfRedactSelection, object: nil)
-            nc.addObserver(self, selector: #selector(handlePrint), name: .pdfPrint, object: nil)
         }
 
         deinit {
@@ -305,8 +304,17 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         @objc func handleApplySignature(_ notification: Notification) {
-            guard let pdfView = pdfView,
-                  let image = notification.userInfo?["image"] as? NSImage else { return }
+            guard let pdfView = pdfView else { return }
+
+            // Handle cancel
+            if notification.userInfo?["cancel"] as? Bool == true {
+                pdfView.pendingSignatureImage = nil
+                NSCursor.arrow.set()
+                pdfView.window?.invalidateCursorRects(for: pdfView)
+                return
+            }
+
+            guard let image = notification.userInfo?["image"] as? NSImage else { return }
 
             // Enter signature placement mode — next click places it
             pdfView.pendingSignatureImage = image
@@ -324,10 +332,6 @@ struct PDFKitView: NSViewRepresentable {
                 pdfView.clearSelection()
                 NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
             }
-        }
-
-        @objc func handlePrint(_ notification: Notification) {
-            pdfView?.performPrint()
         }
 
         func search(_ text: String, in pdfView: PDFView) {

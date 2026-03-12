@@ -113,9 +113,13 @@ struct MikePDFViewerApp: App {
                 .disabled(focusedDocument == nil)
             }
 
-            // Print is handled by PrintablePDFView in the responder chain.
-            // The system's default File > Print menu item sends printView:
-            // to the first responder, which PrintablePDFView handles.
+            // MARK: Print
+            CommandGroup(replacing: .printItem) {
+                Button("Print...") {
+                    NotificationCenter.default.post(name: .pdfPrint, object: nil)
+                }
+                .keyboardShortcut("p", modifiers: .command)
+            }
 
             // MARK: Tools Menu
             CommandMenu("Tools") {

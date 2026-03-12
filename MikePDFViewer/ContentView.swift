@@ -35,6 +35,8 @@ struct ContentView: View {
     @State private var showWatermarkSheet = false
     @State private var showExportImages = false
     @State private var showCompareSheet = false
+    @State private var pendingSignatureImage: NSImage?
+    @State private var signaturePlacementMode = false
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -61,6 +63,13 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showSignatureSheet) {
                 SignatureView { image in
+                    pendingSignatureImage = image
+                }
+            }
+            .onChange(of: showSignatureSheet) { _, isShowing in
+                if !isShowing, let image = pendingSignatureImage {
+                    pendingSignatureImage = nil
+                    signaturePlacementMode = true
                     NotificationCenter.default.post(
                         name: .pdfApplySignature,
                         object: nil,
@@ -108,6 +117,7 @@ struct ContentView: View {
         viewWithAlerts
             .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
                 documentVersion += 1
+                signaturePlacementMode = false
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleDarkMode)) { _ in
                 darkModeReading.toggle()
@@ -286,6 +296,28 @@ struct ContentView: View {
 
             if showSearch, pdfDocument != nil {
                 searchBar
+            }
+
+            if signaturePlacementMode {
+                VStack {
+                    HStack {
+                        Image(systemName: "hand.tap")
+                        Text("Click on the PDF to place your signature")
+                            .fontWeight(.medium)
+                        Button("Cancel") {
+                            signaturePlacementMode = false
+                            NotificationCenter.default.post(name: .pdfApplySignature, object: nil, userInfo: ["cancel": true])
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(.regularMaterial)
+                    .cornerRadius(8)
+                    .shadow(radius: 4)
+                    .padding(.top, 8)
+                    Spacer()
+                }
             }
         }
     }
