@@ -31,6 +31,7 @@ extension Notification.Name {
 
 class PrintablePDFView: PDFView {
     var pendingSignatureImage: NSImage?
+    var signatureWidth: CGFloat = 200
 
     // Respond to macOS system print action (File > Print / Cmd+P)
     @objc override func printView(_ sender: Any?) {
@@ -75,7 +76,7 @@ class PrintablePDFView: PDFView {
             }
             let pagePoint = convert(viewPoint, to: page)
 
-            let sigWidth: CGFloat = 150
+            let sigWidth = signatureWidth
             let sigHeight = sigWidth * (sigImage.size.height / max(sigImage.size.width, 1))
             let bounds = CGRect(
                 x: pagePoint.x - sigWidth / 2,
@@ -314,9 +315,18 @@ struct PDFKitView: NSViewRepresentable {
                 return
             }
 
+            // Handle width-only update (slider changed)
+            if let width = notification.userInfo?["widthOnly"] as? CGFloat {
+                pdfView.signatureWidth = width
+                return
+            }
+
             guard let image = notification.userInfo?["image"] as? NSImage else { return }
 
             // Enter signature placement mode — next click places it
+            if let width = notification.userInfo?["width"] as? CGFloat {
+                pdfView.signatureWidth = width
+            }
             pdfView.pendingSignatureImage = image
             NSCursor.crosshair.set()
             pdfView.window?.invalidateCursorRects(for: pdfView)
@@ -369,8 +379,7 @@ class SignatureAnnotation: PDFAnnotation {
     }
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
-        super.draw(with: box, in: context)
-
+        // Do NOT call super.draw() — it renders the default stamp X pattern
         guard let cgImage = signatureImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
         context.draw(cgImage, in: bounds)
     }

@@ -9,91 +9,102 @@ struct SignatureView: View {
     let onApply: (NSImage) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            drawingArea
-            Divider()
-            savedSignatures
-            Divider()
-            footer
+        VStack(spacing: 12) {
+            // Title
+            Text("Signature")
+                .font(.headline)
+                .padding(.top, 16)
+
+            // Drawing canvas
+            VStack(spacing: 6) {
+                Text("Draw your signature below:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                SignatureCanvas(drawingView: drawingView)
+                    .frame(height: 100)
+                    .background(Color.white)
+                    .border(Color.gray.opacity(0.4))
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    Button("Clear") {
+                        drawingView.clear()
+                    }
+                    .controlSize(.small)
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        TextField("Name", text: $signatureName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+
+                        Button("Save") {
+                            if let image = drawingView.getImage() {
+                                let sig = SignatureManager.SavedSignature(name: signatureName, image: image)
+                                signatureManager.save(sig)
+                                drawingView.clear()
+                            }
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+
+            Divider().padding(.horizontal, 16)
+
+            // Saved signatures
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Saved Signatures")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+
+                if signatureManager.savedSignatures.isEmpty {
+                    Text("No saved signatures. Draw one above and click Save.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 16)
+                        .frame(height: 50)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(signatureManager.savedSignatures) { sig in
+                                savedSignatureCard(sig)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .frame(height: 90)
+                }
+            }
+
+            Divider().padding(.horizontal, 16)
+
+            // Footer
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Apply Current Drawing") {
+                    if let image = drawingView.getImage() {
+                        onApply(image)
+                        dismiss()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
-        .frame(width: 520, height: 480)
+        .frame(width: 480, height: 400)
     }
 
     @State private var drawingView = SignatureDrawingView()
-
-    private var header: some View {
-        HStack {
-            Text("Signature")
-                .font(.headline)
-            Spacer()
-            TextField("Name", text: $signatureName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
-        }
-        .padding()
-    }
-
-    private var drawingArea: some View {
-        VStack(spacing: 8) {
-            Text("Draw your signature below")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            SignatureCanvas(drawingView: drawingView)
-                .frame(height: 120)
-                .background(Color.white)
-                .border(Color.gray.opacity(0.3))
-                .padding(.horizontal)
-
-            HStack {
-                Button("Clear") {
-                    drawingView.clear()
-                }
-                Spacer()
-                Button("Save Signature") {
-                    if let image = drawingView.getImage() {
-                        let sig = SignatureManager.SavedSignature(name: signatureName, image: image)
-                        signatureManager.save(sig)
-                        drawingView.clear()
-                    }
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal)
-        }
-        .padding(.vertical, 8)
-    }
-
-    private var savedSignatures: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Saved Signatures")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-
-            if signatureManager.savedSignatures.isEmpty {
-                Text("No saved signatures yet. Draw one above and click Save Signature.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal)
-                    .frame(height: 30)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(signatureManager.savedSignatures) { sig in
-                            savedSignatureCard(sig)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .frame(height: 100)
-            }
-        }
-        .padding(.vertical, 8)
-    }
 
     private func savedSignatureCard(_ sig: SignatureManager.SavedSignature) -> some View {
         VStack(spacing: 4) {
@@ -101,7 +112,7 @@ struct SignatureView: View {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(height: 40)
+                    .frame(height: 36)
                     .background(Color.white)
                     .border(Color.gray.opacity(0.3))
             }
@@ -128,27 +139,7 @@ struct SignatureView: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(width: 110)
-    }
-
-    private var footer: some View {
-        HStack {
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Spacer()
-            Text("Draw above and click Apply, or click Use on a saved signature")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            Spacer()
-            Button("Apply Current Drawing") {
-                if let image = drawingView.getImage() {
-                    onApply(image)
-                    dismiss()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
+        .frame(width: 100)
     }
 }
 

@@ -37,6 +37,7 @@ struct ContentView: View {
     @State private var showCompareSheet = false
     @State private var pendingSignatureImage: NSImage?
     @State private var signaturePlacementMode = false
+    @State private var signatureWidth: CGFloat = 200
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -73,7 +74,7 @@ struct ContentView: View {
                     NotificationCenter.default.post(
                         name: .pdfApplySignature,
                         object: nil,
-                        userInfo: ["image": image]
+                        userInfo: ["image": image, "width": signatureWidth]
                     )
                 }
             }
@@ -229,6 +230,9 @@ struct ContentView: View {
                 bookmarkManager: bookmarkManager,
                 onMovePage: { from, to in
                     movePage(from: from, to: to)
+                },
+                onDeletePages: { pageIndices in
+                    deletePages(pageIndices)
                 }
             )
         } else {
@@ -300,10 +304,27 @@ struct ContentView: View {
 
             if signaturePlacementMode {
                 VStack {
-                    HStack {
+                    HStack(spacing: 12) {
                         Image(systemName: "hand.tap")
-                        Text("Click on the PDF to place your signature")
+                        Text("Click to place signature")
                             .fontWeight(.medium)
+                        Text("Size:")
+                            .foregroundStyle(.secondary)
+                        Slider(value: $signatureWidth, in: 80...400, step: 10) {
+                            Text("Size")
+                        }
+                        .frame(width: 120)
+                        .onChange(of: signatureWidth) { _, newWidth in
+                            NotificationCenter.default.post(
+                                name: .pdfApplySignature,
+                                object: nil,
+                                userInfo: ["widthOnly": newWidth]
+                            )
+                        }
+                        Text("\(Int(signatureWidth))pt")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 40)
                         Button("Cancel") {
                             signaturePlacementMode = false
                             NotificationCenter.default.post(name: .pdfApplySignature, object: nil, userInfo: ["cancel": true])
@@ -639,6 +660,21 @@ struct ContentView: View {
             object: nil,
             userInfo: ["text": text, "color": NSColor(annotationColor)]
         )
+    }
+
+    private func deletePages(_ pageIndices: [Int]) {
+        guard let document = pdfDocument else { return }
+        // pageIndices should be sorted descending so removal doesn't shift indices
+        for index in pageIndices {
+            guard index >= 0, index < document.pageCount, document.pageCount > 1 else { continue }
+            document.removePage(at: index)
+        }
+        totalPages = document.pageCount
+        if currentPage >= totalPages {
+            currentPage = max(0, totalPages - 1)
+        }
+        documentVersion += 1
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
     }
 
     private func movePage(from source: Int, to destination: Int) {

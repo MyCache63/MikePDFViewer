@@ -9,29 +9,56 @@ struct ThumbnailSidebar: View {
     let documentVersion: Int
     @ObservedObject var bookmarkManager: BookmarkManager
     var onMovePage: ((Int, Int) -> Void)?
+    var onDeletePages: (([Int]) -> Void)?
 
     @State private var draggedPage: Int?
+    @State private var selectedPages: Set<Int> = []
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    // Bookmarks section
-                    if !bookmarkManager.bookmarks.isEmpty {
-                        bookmarkSection
-                        Divider().padding(.horizontal, 8)
+            VStack(spacing: 0) {
+                // Delete button when pages are selected
+                if !selectedPages.isEmpty && totalPages > 1 {
+                    HStack {
+                        Text("\(selectedPages.count) selected")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            let sorted = selectedPages.sorted(by: >)
+                            onDeletePages?(sorted)
+                            selectedPages.removeAll()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
                     }
-
-                    // Page thumbnails
-                    ForEach(0..<totalPages, id: \.self) { index in
-                        thumbnailRow(index: index)
-                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.08))
                 }
-                .padding(8)
-            }
-            .onChange(of: currentPage) { _, newPage in
-                withAnimation {
-                    proxy.scrollTo(newPage, anchor: .center)
+
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        // Bookmarks section
+                        if !bookmarkManager.bookmarks.isEmpty {
+                            bookmarkSection
+                            Divider().padding(.horizontal, 8)
+                        }
+
+                        // Page thumbnails
+                        ForEach(0..<totalPages, id: \.self) { index in
+                            thumbnailRow(index: index)
+                        }
+                    }
+                    .padding(8)
+                }
+                .onChange(of: currentPage) { _, newPage in
+                    withAnimation {
+                        proxy.scrollTo(newPage, anchor: .center)
+                    }
                 }
             }
         }
@@ -43,12 +70,31 @@ struct ThumbnailSidebar: View {
             document: document,
             pageIndex: index,
             isSelected: index == currentPage,
+            isMultiSelected: selectedPages.contains(index),
             isBookmarked: bookmarkManager.isBookmarked(index),
             documentVersion: documentVersion
         )
         .id(index)
         .onTapGesture {
-            currentPage = index
+            if NSEvent.modifierFlags.contains(.command) {
+                // Cmd+click toggles selection
+                if selectedPages.contains(index) {
+                    selectedPages.remove(index)
+                } else {
+                    selectedPages.insert(index)
+                }
+            } else if NSEvent.modifierFlags.contains(.shift) && !selectedPages.isEmpty {
+                // Shift+click selects range
+                let anchor = selectedPages.min() ?? currentPage
+                let range = min(anchor, index)...max(anchor, index)
+                for i in range {
+                    selectedPages.insert(i)
+                }
+            } else {
+                // Normal click: navigate and clear selection
+                selectedPages.removeAll()
+                currentPage = index
+            }
         }
         .onDrag {
             draggedPage = index
@@ -128,10 +174,17 @@ struct ThumbnailItem: View {
     let document: PDFDocument
     let pageIndex: Int
     let isSelected: Bool
+    let isMultiSelected: Bool
     let isBookmarked: Bool
     let documentVersion: Int
 
     @State private var thumbnail: NSImage?
+
+    private var borderColor: Color {
+        if isSelected { return .accentColor }
+        if isMultiSelected { return .orange }
+        return .clear
+    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -156,15 +209,22 @@ struct ThumbnailItem: View {
             .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .stroke(borderColor, lineWidth: 2)
             )
             .overlay(alignment: .topTrailing) {
-                if isBookmarked {
-                    Image(systemName: "bookmark.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .padding(2)
+                HStack(spacing: 2) {
+                    if isMultiSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    if isBookmarked {
+                        Image(systemName: "bookmark.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
+                .padding(2)
             }
 
             Text("\(pageIndex + 1)")
@@ -172,6 +232,8 @@ struct ThumbnailItem: View {
                 .foregroundStyle(isSelected ? .primary : .secondary)
         }
         .padding(.horizontal, 4)
+        .background(isMultiSelected ? Color.orange.opacity(0.08) : Color.clear)
+        .cornerRadius(4)
         .onAppear {
             generateThumbnail()
         }
