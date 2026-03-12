@@ -25,35 +25,47 @@ extension Notification.Name {
     static let pdfApplySignature = Notification.Name("pdfApplySignature")
     static let pdfRedactSelection = Notification.Name("pdfRedactSelection")
     static let pdfPrint = Notification.Name("pdfPrint")
-    // Posted when signature editing mode changes (userInfo: ["editing": Bool])
-    static let pdfSignatureEditingChanged = Notification.Name("pdfSignatureEditingChanged")
+    // Posted when annotation editing mode changes
+    // userInfo: ["editing": Bool, "type": String, "text": String]
+    static let pdfAnnotationEditingChanged = Notification.Name("pdfAnnotationEditingChanged")
 }
 
-// MARK: - Custom PDFView with print support and signature editing
+// MARK: - Custom PDFView with print, annotation editing
 
 class PrintablePDFView: PDFView {
-    // Static reference so print can be called reliably from anywhere
+    // Static reference for direct access from SwiftUI
     static weak var current: PrintablePDFView?
+    // Cmd+P event monitor
+    private static var printMonitor: Any?
 
-    // Signature editing state
-    private(set) var activeSignature: SignatureAnnotation?
+    // Annotation editing state
+    private(set) var activeAnnotation: PDFAnnotation?
     private var activePage: PDFPage?
     private var isDragging = false
     private var isResizing = false
     private var dragOffset: CGPoint = .zero
-    private var resizeCorner: Int = -1 // 0=BL, 1=BR, 2=TL, 3=TR
+    private var resizeCorner: Int = -1
     private var initialBounds: CGRect = .zero
-    private var initialMousePoint: CGPoint = .zero
-
-    // Handle size for resize corners (in page points)
     private let handleHitSize: CGFloat = 14
 
-    // Respond to macOS system print action (File > Print / Cmd+P)
+    /// Types that support resizing (drag corners)
+    private var activeAnnotationIsResizable: Bool {
+        guard let ann = activeAnnotation else { return false }
+        return ann is SignatureAnnotation || ann.type == "FreeText"
+    }
+
+    /// Types that have editable text
+    private var activeAnnotationHasText: Bool {
+        guard let ann = activeAnnotation else { return false }
+        return ann.type == "Text" || ann.type == "FreeText"
+    }
+
+    // MARK: - Print
+
     @objc override func printView(_ sender: Any?) {
         performPrint()
     }
 
-    // Also respond to printDocument: for NSDocument-style apps
     @objc func printDocument(_ sender: Any?) {
         performPrint()
     }
@@ -70,7 +82,42 @@ class PrintablePDFView: PDFView {
         }
     }
 
-    /// Add annotation with undo support
+    /// Reliable print that walks view hierarchy as fallback
+    static func triggerPrint() {
+        if let current = current {
+            current.performPrint()
+            return
+        }
+        // Fallback: find PrintablePDFView in the key window
+        if let window = NSApp.keyWindow {
+            findPDFView(in: window.contentView)?.performPrint()
+        }
+    }
+
+    private static func findPDFView(in view: NSView?) -> PrintablePDFView? {
+        guard let view = view else { return nil }
+        if let pdfView = view as? PrintablePDFView { return pdfView }
+        for subview in view.subviews {
+            if let found = findPDFView(in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// Install a Cmd+P event monitor at the app level
+    static func installPrintMonitor() {
+        guard printMonitor == nil else { return }
+        printMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if mods == .command, event.charactersIgnoringModifiers == "p" {
+                triggerPrint()
+                return nil // consume the event
+            }
+            return event
+        }
+    }
+
+    // MARK: - Undo
+
     func addAnnotationWithUndo(_ annotation: PDFAnnotation, to page: PDFPage) {
         page.addAnnotation(annotation)
         undoManager?.registerUndo(withTarget: self) { target in
@@ -81,7 +128,8 @@ class PrintablePDFView: PDFView {
         NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
     }
 
-    /// Place a signature at center of visible area and enter editing mode
+    // MARK: - Annotation placement
+
     func placeSignature(image: NSImage) {
         guard let page = currentPage else { return }
         let visibleRect = convert(visibleRect, to: page)
@@ -98,48 +146,113 @@ class PrintablePDFView: PDFView {
         let annotation = SignatureAnnotation(bounds: bounds, image: image)
         annotation.isEditing = true
         addAnnotationWithUndo(annotation, to: page)
+        startEditing(annotation, on: page, type: "signature")
+    }
 
-        activeSignature = annotation
+    func placeStickyNote(color: NSColor = .yellow) {
+        guard let page = currentPage else { return }
+        let visibleRect = convert(visibleRect, to: page)
+        let noteSize: CGFloat = 24
+        let bounds = CGRect(
+            x: visibleRect.midX - noteSize / 2,
+            y: visibleRect.midY - noteSize / 2,
+            width: noteSize,
+            height: noteSize
+        )
+        let annotation = PDFAnnotation(bounds: bounds, forType: .text, withProperties: nil)
+        annotation.contents = ""
+        annotation.color = color
+        addAnnotationWithUndo(annotation, to: page)
+        startEditing(annotation, on: page, type: "stickyNote")
+    }
+
+    func placeFreeText() {
+        guard let page = currentPage else { return }
+        let visibleRect = convert(visibleRect, to: page)
+        let bounds = CGRect(
+            x: visibleRect.midX - 100,
+            y: visibleRect.midY - 20,
+            width: 200,
+            height: 40
+        )
+        let annotation = PDFAnnotation(bounds: bounds, forType: .freeText, withProperties: nil)
+        annotation.contents = ""
+        annotation.font = NSFont.systemFont(ofSize: 14)
+        annotation.fontColor = .black
+        annotation.color = .white.withAlphaComponent(0.9)
+        annotation.border = PDFBorder()
+        annotation.border?.lineWidth = 1
+        addAnnotationWithUndo(annotation, to: page)
+        startEditing(annotation, on: page, type: "freeText")
+    }
+
+    // MARK: - Editing mode
+
+    private func startEditing(_ annotation: PDFAnnotation, on page: PDFPage, type: String) {
+        // Deselect previous if any
+        if let prev = activeAnnotation as? SignatureAnnotation {
+            prev.isEditing = false
+        }
+        activeAnnotation = annotation
         activePage = page
-        setNeedsDisplay(self.bounds)
+        if let sig = annotation as? SignatureAnnotation {
+            sig.isEditing = true
+        }
+        setNeedsDisplay(bounds)
 
         NotificationCenter.default.post(
-            name: .pdfSignatureEditingChanged,
+            name: .pdfAnnotationEditingChanged,
             object: nil,
-            userInfo: ["editing": true]
+            userInfo: [
+                "editing": true,
+                "type": type,
+                "text": annotation.contents ?? ""
+            ]
         )
     }
 
-    /// Finish editing the active signature
-    func finalizeSignature() {
-        guard let sig = activeSignature else { return }
-        sig.isEditing = false
-        activeSignature = nil
+    func finalizeAnnotation() {
+        if let sig = activeAnnotation as? SignatureAnnotation {
+            sig.isEditing = false
+        }
+        activeAnnotation = nil
         activePage = nil
+        isDragging = false
+        isResizing = false
         setNeedsDisplay(bounds)
         NotificationCenter.default.post(
-            name: .pdfSignatureEditingChanged,
+            name: .pdfAnnotationEditingChanged,
             object: nil,
-            userInfo: ["editing": false]
+            userInfo: ["editing": false, "type": "", "text": ""]
         )
     }
 
-    /// Cancel/delete the active signature
-    func cancelSignature() {
-        guard let sig = activeSignature, let page = activePage else { return }
-        page.removeAnnotation(sig)
-        activeSignature = nil
+    func cancelAnnotation() {
+        guard let ann = activeAnnotation, let page = activePage else { return }
+        if let sig = ann as? SignatureAnnotation {
+            sig.isEditing = false
+        }
+        page.removeAnnotation(ann)
+        activeAnnotation = nil
         activePage = nil
+        isDragging = false
+        isResizing = false
         setNeedsDisplay(bounds)
         NotificationCenter.default.post(
-            name: .pdfSignatureEditingChanged,
+            name: .pdfAnnotationEditingChanged,
             object: nil,
-            userInfo: ["editing": false]
+            userInfo: ["editing": false, "type": "", "text": ""]
         )
         NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
     }
 
-    // MARK: - Mouse handling for signature drag/resize
+    func updateActiveAnnotationText(_ text: String) {
+        guard let ann = activeAnnotation else { return }
+        ann.contents = text
+        setNeedsDisplay(bounds)
+    }
+
+    // MARK: - Mouse handling for drag/resize
 
     override func mouseDown(with event: NSEvent) {
         let viewPoint = convert(event.locationInWindow, from: nil)
@@ -149,24 +262,24 @@ class PrintablePDFView: PDFView {
         }
         let pagePoint = convert(viewPoint, to: page)
 
-        // If editing a signature, check for resize handles or drag
-        if let active = activeSignature, active.isEditing {
-            // Check resize handles (corners)
-            let corners = [
-                CGPoint(x: active.bounds.minX, y: active.bounds.minY), // 0: BL
-                CGPoint(x: active.bounds.maxX, y: active.bounds.minY), // 1: BR
-                CGPoint(x: active.bounds.minX, y: active.bounds.maxY), // 2: TL
-                CGPoint(x: active.bounds.maxX, y: active.bounds.maxY), // 3: TR
-            ]
-
-            for (i, corner) in corners.enumerated() {
-                if abs(pagePoint.x - corner.x) < handleHitSize &&
-                   abs(pagePoint.y - corner.y) < handleHitSize {
-                    isResizing = true
-                    resizeCorner = i
-                    initialBounds = active.bounds
-                    initialMousePoint = pagePoint
-                    return
+        // If editing an annotation, check for resize handles or drag
+        if let active = activeAnnotation {
+            // Check resize handles (corners) for resizable types
+            if activeAnnotationIsResizable {
+                let corners = [
+                    CGPoint(x: active.bounds.minX, y: active.bounds.minY),
+                    CGPoint(x: active.bounds.maxX, y: active.bounds.minY),
+                    CGPoint(x: active.bounds.minX, y: active.bounds.maxY),
+                    CGPoint(x: active.bounds.maxX, y: active.bounds.maxY),
+                ]
+                for (i, corner) in corners.enumerated() {
+                    if abs(pagePoint.x - corner.x) < handleHitSize &&
+                       abs(pagePoint.y - corner.y) < handleHitSize {
+                        isResizing = true
+                        resizeCorner = i
+                        initialBounds = active.bounds
+                        return
+                    }
                 }
             }
 
@@ -181,22 +294,24 @@ class PrintablePDFView: PDFView {
             }
 
             // Clicked elsewhere — finalize
-            finalizeSignature()
+            finalizeAnnotation()
         }
 
-        // Check if clicking on any existing SignatureAnnotation to select it
+        // Check if clicking on any movable annotation to select it
         for annotation in page.annotations {
-            if let sigAnnotation = annotation as? SignatureAnnotation,
-               sigAnnotation.bounds.contains(pagePoint) {
-                activeSignature = sigAnnotation
-                activePage = page
+            guard annotation.bounds.contains(pagePoint) else { continue }
+
+            if let sigAnnotation = annotation as? SignatureAnnotation {
                 sigAnnotation.isEditing = true
-                setNeedsDisplay(bounds)
-                NotificationCenter.default.post(
-                    name: .pdfSignatureEditingChanged,
-                    object: nil,
-                    userInfo: ["editing": true]
-                )
+                startEditing(sigAnnotation, on: page, type: "signature")
+                return
+            }
+            if annotation.type == "Text" {
+                startEditing(annotation, on: page, type: "stickyNote")
+                return
+            }
+            if annotation.type == "FreeText" {
+                startEditing(annotation, on: page, type: "freeText")
                 return
             }
         }
@@ -205,7 +320,7 @@ class PrintablePDFView: PDFView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let active = activeSignature, let page = activePage else {
+        guard let active = activeAnnotation, let page = activePage else {
             super.mouseDragged(with: event)
             return
         }
@@ -226,20 +341,20 @@ class PrintablePDFView: PDFView {
             let minH: CGFloat = 20
 
             switch resizeCorner {
-            case 3: // TR — drag right and up
+            case 3: // TR
                 newBounds.size.width = max(minW, pagePoint.x - initialBounds.minX)
                 newBounds.size.height = max(minH, pagePoint.y - initialBounds.minY)
-            case 1: // BR — drag right and down
+            case 1: // BR
                 newBounds.size.width = max(minW, pagePoint.x - initialBounds.minX)
                 let newH = max(minH, initialBounds.maxY - pagePoint.y)
                 newBounds.origin.y = initialBounds.maxY - newH
                 newBounds.size.height = newH
-            case 2: // TL — drag left and up
+            case 2: // TL
                 let newW = max(minW, initialBounds.maxX - pagePoint.x)
                 newBounds.origin.x = initialBounds.maxX - newW
                 newBounds.size.width = newW
                 newBounds.size.height = max(minH, pagePoint.y - initialBounds.minY)
-            case 0: // BL — drag left and down
+            case 0: // BL
                 let newW = max(minW, initialBounds.maxX - pagePoint.x)
                 let newH = max(minH, initialBounds.maxY - pagePoint.y)
                 newBounds.origin.x = initialBounds.maxX - newW
@@ -261,6 +376,54 @@ class PrintablePDFView: PDFView {
             isResizing = false
         } else {
             super.mouseUp(with: event)
+        }
+    }
+
+    // Draw selection handles for non-signature active annotations
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        // Draw selection handles for non-signature annotations (signatures draw their own)
+        guard let active = activeAnnotation,
+              !(active is SignatureAnnotation),
+              let page = activePage else { return }
+
+        // Convert annotation bounds from page space to view space
+        let pageBounds = active.bounds
+        let viewBounds = convert(pageBounds, from: page)
+
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+
+        // Dashed selection border
+        context.setStrokeColor(NSColor.systemBlue.cgColor)
+        context.setLineWidth(1.5)
+        context.setLineDash(phase: 0, lengths: [4, 3])
+        context.stroke(viewBounds)
+
+        // Corner handles (only for resizable types)
+        if activeAnnotationIsResizable {
+            let handleSize: CGFloat = 8
+            context.setLineDash(phase: 0, lengths: [])
+            context.setFillColor(NSColor.white.cgColor)
+            context.setStrokeColor(NSColor.systemBlue.cgColor)
+            context.setLineWidth(1.5)
+
+            let corners = [
+                CGPoint(x: viewBounds.minX, y: viewBounds.minY),
+                CGPoint(x: viewBounds.maxX, y: viewBounds.minY),
+                CGPoint(x: viewBounds.minX, y: viewBounds.maxY),
+                CGPoint(x: viewBounds.maxX, y: viewBounds.maxY),
+            ]
+            for corner in corners {
+                let rect = CGRect(
+                    x: corner.x - handleSize / 2,
+                    y: corner.y - handleSize / 2,
+                    width: handleSize,
+                    height: handleSize
+                )
+                context.fillEllipse(in: rect)
+                context.strokeEllipse(in: rect)
+            }
         }
     }
 }
@@ -285,7 +448,6 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.displayDirection = .vertical
         pdfView.document = document
 
-        // Dark mode layer setup
         pdfView.wantsLayer = true
         if darkMode {
             pdfView.layer?.filters = [CIFilter(name: "CIColorInvert")!]
@@ -300,6 +462,7 @@ struct PDFKitView: NSViewRepresentable {
 
         context.coordinator.pdfView = pdfView
         PrintablePDFView.current = pdfView
+        PrintablePDFView.installPrintMonitor()
         return pdfView
     }
 
@@ -313,12 +476,10 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.go(to: page)
         }
 
-        // Update display mode
         if pdfView.displayMode != displayMode {
             pdfView.displayMode = displayMode
         }
 
-        // Update dark mode
         let currentlyDark = !(pdfView.layer?.filters?.isEmpty ?? true)
         if darkMode != currentlyDark {
             if darkMode {
@@ -350,8 +511,6 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleHighlight), name: .pdfApplyHighlight, object: nil)
             nc.addObserver(self, selector: #selector(handleUnderline), name: .pdfApplyUnderline, object: nil)
             nc.addObserver(self, selector: #selector(handleStrikethrough), name: .pdfApplyStrikethrough, object: nil)
-            nc.addObserver(self, selector: #selector(handleAddStickyNote), name: .pdfAddStickyNote, object: nil)
-            nc.addObserver(self, selector: #selector(handleAddFreeText), name: .pdfAddFreeText, object: nil)
             nc.addObserver(self, selector: #selector(handleApplySignature), name: .pdfApplySignature, object: nil)
             nc.addObserver(self, selector: #selector(handleRedactSelection), name: .pdfRedactSelection, object: nil)
         }
@@ -369,17 +528,9 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        @objc func handleZoomIn(_ notification: Notification) {
-            pdfView?.zoomIn(nil)
-        }
-
-        @objc func handleZoomOut(_ notification: Notification) {
-            pdfView?.zoomOut(nil)
-        }
-
-        @objc func handleZoomFit(_ notification: Notification) {
-            pdfView?.autoScales = true
-        }
+        @objc func handleZoomIn(_ notification: Notification) { pdfView?.zoomIn(nil) }
+        @objc func handleZoomOut(_ notification: Notification) { pdfView?.zoomOut(nil) }
+        @objc func handleZoomFit(_ notification: Notification) { pdfView?.autoScales = true }
 
         @objc func handleRotateRight(_ notification: Notification) {
             guard let page = pdfView?.currentPage else { return }
@@ -395,21 +546,11 @@ struct PDFKitView: NSViewRepresentable {
             NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
         }
 
-        @objc func handleCopy(_ notification: Notification) {
-            pdfView?.copy(nil)
-        }
+        @objc func handleCopy(_ notification: Notification) { pdfView?.copy(nil) }
 
-        @objc func handleHighlight(_ notification: Notification) {
-            applyTextMarkup(.highlight, from: notification)
-        }
-
-        @objc func handleUnderline(_ notification: Notification) {
-            applyTextMarkup(.underline, from: notification)
-        }
-
-        @objc func handleStrikethrough(_ notification: Notification) {
-            applyTextMarkup(.strikeOut, from: notification)
-        }
+        @objc func handleHighlight(_ notification: Notification) { applyTextMarkup(.highlight, from: notification) }
+        @objc func handleUnderline(_ notification: Notification) { applyTextMarkup(.underline, from: notification) }
+        @objc func handleStrikethrough(_ notification: Notification) { applyTextMarkup(.strikeOut, from: notification) }
 
         private func applyTextMarkup(_ type: PDFAnnotationSubtype, from notification: Notification) {
             guard let pdfView = pdfView,
@@ -424,46 +565,6 @@ struct PDFKitView: NSViewRepresentable {
                 pdfView.addAnnotationWithUndo(annotation, to: page)
             }
             pdfView.clearSelection()
-        }
-
-        @objc func handleAddStickyNote(_ notification: Notification) {
-            guard let pdfView = pdfView,
-                  let page = pdfView.currentPage else { return }
-            let text = notification.userInfo?["text"] as? String ?? ""
-            let color = notification.userInfo?["color"] as? NSColor ?? .yellow
-
-            let visibleRect = pdfView.convert(pdfView.visibleRect, to: page)
-            let noteSize: CGFloat = 20
-            let bounds = CGRect(
-                x: visibleRect.midX - noteSize / 2,
-                y: visibleRect.midY - noteSize / 2,
-                width: noteSize,
-                height: noteSize
-            )
-            let annotation = PDFAnnotation(bounds: bounds, forType: .text, withProperties: nil)
-            annotation.contents = text
-            annotation.color = color
-            pdfView.addAnnotationWithUndo(annotation, to: page)
-        }
-
-        @objc func handleAddFreeText(_ notification: Notification) {
-            guard let pdfView = pdfView,
-                  let page = pdfView.currentPage else { return }
-            let text = notification.userInfo?["text"] as? String ?? ""
-
-            let visibleRect = pdfView.convert(pdfView.visibleRect, to: page)
-            let bounds = CGRect(
-                x: visibleRect.midX - 100,
-                y: visibleRect.midY - 20,
-                width: 200,
-                height: 40
-            )
-            let annotation = PDFAnnotation(bounds: bounds, forType: .freeText, withProperties: nil)
-            annotation.contents = text
-            annotation.font = NSFont.systemFont(ofSize: 14)
-            annotation.fontColor = .black
-            annotation.color = .clear
-            pdfView.addAnnotationWithUndo(annotation, to: page)
         }
 
         @objc func handleApplySignature(_ notification: Notification) {
@@ -487,11 +588,8 @@ struct PDFKitView: NSViewRepresentable {
         func search(_ text: String, in pdfView: PDFView) {
             guard text != lastSearchText else { return }
             lastSearchText = text
-
             pdfView.highlightedSelections = nil
-
             guard !text.isEmpty, let document = pdfView.document else { return }
-
             let selections = document.findString(text, withOptions: .caseInsensitive)
             if !selections.isEmpty {
                 pdfView.highlightedSelections = selections
@@ -520,18 +618,17 @@ class SignatureAnnotation: PDFAnnotation {
     }
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
-        // Do NOT call super.draw() — it renders the default stamp X pattern
         guard let cgImage = signatureImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
         context.draw(cgImage, in: bounds)
 
         if isEditing {
-            // Draw dashed selection border
+            // Dashed selection border
             context.setStrokeColor(NSColor.systemBlue.cgColor)
             context.setLineWidth(1.5)
             context.setLineDash(phase: 0, lengths: [4, 3])
             context.stroke(bounds)
 
-            // Draw corner handles
+            // Corner handles
             let handleSize: CGFloat = 8
             context.setLineDash(phase: 0, lengths: [])
             context.setFillColor(NSColor.white.cgColor)

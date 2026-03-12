@@ -20,9 +20,6 @@ struct ContentView: View {
     @State private var documentVersion: Int = 0
     @State private var showAnnotationBar = false
     @State private var annotationColor: Color = .yellow
-    @State private var showNoteInput = false
-    @State private var showTextInput = false
-    @State private var noteText: String = ""
     @State private var formFieldCount: Int = 0
     @State private var showExtractSheet = false
     @State private var showSplitView = false
@@ -36,7 +33,9 @@ struct ContentView: View {
     @State private var showExportImages = false
     @State private var showCompareSheet = false
     @State private var pendingSignatureImage: NSImage?
-    @State private var signatureEditingMode = false
+    @State private var annotationEditingMode = false
+    @State private var editingAnnotationType = ""
+    @State private var editingAnnotationText = ""
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -117,8 +116,12 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
                 documentVersion += 1
             }
-            .onReceive(NotificationCenter.default.publisher(for: .pdfSignatureEditingChanged)) { notification in
-                signatureEditingMode = notification.userInfo?["editing"] as? Bool ?? false
+            .onReceive(NotificationCenter.default.publisher(for: .pdfAnnotationEditingChanged)) { notification in
+                annotationEditingMode = notification.userInfo?["editing"] as? Bool ?? false
+                editingAnnotationType = notification.userInfo?["type"] as? String ?? ""
+                if annotationEditingMode {
+                    editingAnnotationText = notification.userInfo?["text"] as? String ?? ""
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleDarkMode)) { _ in
                 darkModeReading.toggle()
@@ -153,9 +156,6 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
                 if pdfDocument != nil { showPresentation = true }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
-                PrintablePDFView.current?.performPrint()
-            }
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
             .onAppear { loadDocument(from: pdfURL) }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
@@ -167,20 +167,6 @@ struct ContentView: View {
             .focusedSceneValue(\.pdfFileURL, pdfURL)
             .focusedSceneValue(\.isDarkMode, darkModeReading)
             .focusedSceneValue(\.displayModeRawValue, displayMode.rawValue)
-            .alert("Add Sticky Note", isPresented: $showNoteInput) {
-                TextField("Note text", text: $noteText)
-                Button("Add") { postAnnotation(.pdfAddStickyNote, text: noteText); noteText = "" }
-                Button("Cancel", role: .cancel) { noteText = "" }
-            } message: {
-                Text("Enter text for the sticky note")
-            }
-            .alert("Add Text Box", isPresented: $showTextInput) {
-                TextField("Text", text: $noteText)
-                Button("Add") { postAnnotation(.pdfAddFreeText, text: noteText); noteText = "" }
-                Button("Cancel", role: .cancel) { noteText = "" }
-            } message: {
-                Text("Enter text for the text box")
-            }
             .alert("Redact Selected Text", isPresented: $showRedactConfirm) {
                 Button("Redact", role: .destructive) {
                     NotificationCenter.default.post(name: .pdfRedactSelection, object: nil)
@@ -277,8 +263,8 @@ struct ContentView: View {
                 onHighlight: { applyMarkup(.pdfApplyHighlight) },
                 onUnderline: { applyMarkup(.pdfApplyUnderline) },
                 onStrikethrough: { applyMarkup(.pdfApplyStrikethrough) },
-                onAddNote: { noteText = ""; showNoteInput = true },
-                onAddText: { noteText = ""; showTextInput = true },
+                onAddNote: { PrintablePDFView.current?.placeStickyNote(color: NSColor(annotationColor)) },
+                onAddText: { PrintablePDFView.current?.placeFreeText() },
                 onDone: { showAnnotationBar = false }
             )
         }
@@ -302,29 +288,9 @@ struct ContentView: View {
                 searchBar
             }
 
-            if signatureEditingMode {
+            if annotationEditingMode {
                 VStack {
-                    HStack(spacing: 12) {
-                        Image(systemName: "signature")
-                        Text("Drag to move, drag corners to resize")
-                            .fontWeight(.medium)
-                        Button("Done") {
-                            PrintablePDFView.current?.finalizeSignature()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        Button("Delete") {
-                            PrintablePDFView.current?.cancelSignature()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .foregroundStyle(.red)
-                    }
-                    .padding(10)
-                    .background(.regularMaterial)
-                    .cornerRadius(8)
-                    .shadow(radius: 4)
-                    .padding(.top, 8)
+                    annotationEditingBanner
                     Spacer()
                 }
             }
@@ -528,6 +494,52 @@ struct ContentView: View {
         showGoToPage = false
     }
 
+    // MARK: - Annotation Editing Banner
+
+    private var annotationEditingBanner: some View {
+        HStack(spacing: 12) {
+            if editingAnnotationType == "stickyNote" || editingAnnotationType == "freeText" {
+                Image(systemName: editingAnnotationType == "stickyNote" ? "note.text" : "textbox")
+                TextField("Type text here...", text: $editingAnnotationText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+                    .onChange(of: editingAnnotationText) { _, newText in
+                        PrintablePDFView.current?.updateActiveAnnotationText(newText)
+                    }
+            } else {
+                Image(systemName: "signature")
+            }
+
+            if editingAnnotationType == "stickyNote" {
+                Text("Drag to move")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Drag to move, drag corners to resize")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("Done") {
+                PrintablePDFView.current?.finalizeAnnotation()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+
+            Button("Delete") {
+                PrintablePDFView.current?.cancelAnnotation()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .foregroundStyle(.red)
+        }
+        .padding(10)
+        .background(.regularMaterial)
+        .cornerRadius(8)
+        .shadow(radius: 4)
+        .padding(.top, 8)
+    }
+
     // MARK: - Empty State
 
     private var emptyState: some View {
@@ -628,13 +640,6 @@ struct ContentView: View {
         )
     }
 
-    private func postAnnotation(_ name: Notification.Name, text: String) {
-        NotificationCenter.default.post(
-            name: name,
-            object: nil,
-            userInfo: ["text": text, "color": NSColor(annotationColor)]
-        )
-    }
 
     private func deletePages(_ pageIndices: [Int]) {
         guard let document = pdfDocument else { return }
