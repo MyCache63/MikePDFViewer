@@ -182,9 +182,7 @@ class PrintablePDFView: PDFView {
         annotation.contents = ""
         annotation.font = NSFont.systemFont(ofSize: 14)
         annotation.fontColor = .black
-        annotation.color = .white.withAlphaComponent(0.9)
-        annotation.border = PDFBorder()
-        annotation.border?.lineWidth = 1
+        annotation.color = .clear
         addAnnotationWithUndo(annotation, to: page)
         startEditing(annotation, on: page, type: "freeText")
     }
