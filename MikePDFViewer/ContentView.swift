@@ -36,6 +36,10 @@ struct ContentView: View {
     @State private var annotationEditingMode = false
     @State private var editingAnnotationType = ""
     @State private var editingAnnotationText = ""
+    @State private var editingFontSize: CGFloat = 14
+    @State private var editingFontBold = false
+    @State private var editingFontItalic = false
+    @State private var editingFontName = "Helvetica"
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -121,6 +125,18 @@ struct ContentView: View {
                 editingAnnotationType = notification.userInfo?["type"] as? String ?? ""
                 if annotationEditingMode {
                     editingAnnotationText = notification.userInfo?["text"] as? String ?? ""
+                    if let font = notification.userInfo?["font"] as? NSFont {
+                        editingFontSize = font.pointSize
+                        let td = NSFontTraitMask(rawValue: UInt(NSFontManager.shared.traits(of: font).rawValue))
+                        editingFontBold = td.contains(.boldFontMask)
+                        editingFontItalic = td.contains(.italicFontMask)
+                        editingFontName = font.familyName ?? "Helvetica"
+                    } else {
+                        editingFontSize = 14
+                        editingFontBold = false
+                        editingFontItalic = false
+                        editingFontName = "Helvetica"
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleDarkMode)) { _ in
@@ -497,47 +513,108 @@ struct ContentView: View {
     // MARK: - Annotation Editing Banner
 
     private var annotationEditingBanner: some View {
-        HStack(spacing: 12) {
-            if editingAnnotationType == "stickyNote" || editingAnnotationType == "freeText" {
-                Image(systemName: editingAnnotationType == "stickyNote" ? "note.text" : "textbox")
-                TextField("Type text here...", text: $editingAnnotationText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
-                    .onChange(of: editingAnnotationText) { _, newText in
-                        PrintablePDFView.current?.updateActiveAnnotationText(newText)
+        VStack(spacing: 6) {
+            // Row 1: Text field (for text types) + action buttons
+            HStack(spacing: 10) {
+                if editingAnnotationType == "stickyNote" || editingAnnotationType == "freeText" {
+                    Image(systemName: editingAnnotationType == "stickyNote" ? "note.text" : "textbox")
+                    TextField("Type text here...", text: $editingAnnotationText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 150, maxWidth: 250)
+                        .onChange(of: editingAnnotationText) { _, newText in
+                            PrintablePDFView.current?.updateActiveAnnotationText(newText)
+                        }
+                } else {
+                    Image(systemName: "signature")
+                }
+
+                Text(editingAnnotationType == "stickyNote" ? "Drag to move" : "Drag to move, drag corners to resize")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button("Done") {
+                    PrintablePDFView.current?.finalizeAnnotation()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button("Delete") {
+                    PrintablePDFView.current?.cancelAnnotation()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .foregroundStyle(.red)
+            }
+
+            // Row 2: Font controls (free text only)
+            if editingAnnotationType == "freeText" {
+                HStack(spacing: 8) {
+                    Text("Font:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $editingFontName) {
+                        Text("Helvetica").tag("Helvetica")
+                        Text("Times").tag("Times New Roman")
+                        Text("Courier").tag("Courier")
+                        Text("Georgia").tag("Georgia")
+                        Text("Arial").tag("Arial")
+                        Text("Verdana").tag("Verdana")
                     }
-            } else {
-                Image(systemName: "signature")
-            }
+                    .pickerStyle(.menu)
+                    .frame(width: 110)
+                    .onChange(of: editingFontName) { _, _ in applyFontChange() }
 
-            if editingAnnotationType == "stickyNote" {
-                Text("Drag to move")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Drag to move, drag corners to resize")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                    Stepper(value: $editingFontSize, in: 8...72, step: 1) {
+                        Text("\(Int(editingFontSize))pt")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 32)
+                    }
+                    .onChange(of: editingFontSize) { _, _ in applyFontChange() }
 
-            Button("Done") {
-                PrintablePDFView.current?.finalizeAnnotation()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+                    Toggle(isOn: $editingFontBold) {
+                        Text("B").fontWeight(.bold)
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    .onChange(of: editingFontBold) { _, _ in applyFontChange() }
 
-            Button("Delete") {
-                PrintablePDFView.current?.cancelAnnotation()
+                    Toggle(isOn: $editingFontItalic) {
+                        Text("I").italic()
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    .onChange(of: editingFontItalic) { _, _ in applyFontChange() }
+
+                    ColorPicker("", selection: $annotationColor)
+                        .labelsHidden()
+                        .frame(width: 24)
+                        .onChange(of: annotationColor) { _, newColor in
+                            PrintablePDFView.current?.updateActiveAnnotationFontColor(NSColor(newColor))
+                        }
+                }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .foregroundStyle(.red)
         }
         .padding(10)
         .background(.regularMaterial)
         .cornerRadius(8)
         .shadow(radius: 4)
         .padding(.top, 8)
+    }
+
+    private func applyFontChange() {
+        var traits: NSFontTraitMask = []
+        if editingFontBold { traits.insert(.boldFontMask) }
+        if editingFontItalic { traits.insert(.italicFontMask) }
+
+        let fm = NSFontManager.shared
+        var font = NSFont(name: editingFontName, size: editingFontSize)
+            ?? NSFont.systemFont(ofSize: editingFontSize)
+        font = fm.convert(font, toHaveTrait: traits)
+        PrintablePDFView.current?.updateActiveAnnotationFont(font)
     }
 
     // MARK: - Empty State

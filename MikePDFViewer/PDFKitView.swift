@@ -201,14 +201,18 @@ class PrintablePDFView: PDFView {
         }
         setNeedsDisplay(bounds)
 
+        var info: [String: Any] = [
+            "editing": true,
+            "type": type,
+            "text": annotation.contents ?? ""
+        ]
+        if let font = annotation.font {
+            info["font"] = font
+        }
         NotificationCenter.default.post(
             name: .pdfAnnotationEditingChanged,
             object: nil,
-            userInfo: [
-                "editing": true,
-                "type": type,
-                "text": annotation.contents ?? ""
-            ]
+            userInfo: info
         )
     }
 
@@ -250,6 +254,18 @@ class PrintablePDFView: PDFView {
     func updateActiveAnnotationText(_ text: String) {
         guard let ann = activeAnnotation else { return }
         ann.contents = text
+        setNeedsDisplay(bounds)
+    }
+
+    func updateActiveAnnotationFont(_ font: NSFont) {
+        guard let ann = activeAnnotation, ann.type == "FreeText" else { return }
+        ann.font = font
+        setNeedsDisplay(bounds)
+    }
+
+    func updateActiveAnnotationFontColor(_ color: NSColor) {
+        guard let ann = activeAnnotation, ann.type == "FreeText" else { return }
+        ann.fontColor = color
         setNeedsDisplay(bounds)
     }
 
