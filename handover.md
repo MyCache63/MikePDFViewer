@@ -16,6 +16,34 @@
 - Inline images (cid:) auto-embedded as data URLs
 - Plan saved as `Add_eml_to_PDFViewer_Plan_v01_April29.md`
 
+### Known Issue: Gatekeeper Warning on Quarantined .eml Files
+
+**Symptom:** When opening an `.eml` file that was downloaded from the web (e.g. a Gmail attachment saved via Edge or Chrome), macOS shows a delayed "Apple could not verify [filename] is free of malware" dialog with "Move to Trash" / "Done" buttons. The file *does* open in MikePDFViewer first; the warning appears after.
+
+**Root cause:** Two things combined:
+1. The downloaded `.eml` has a `com.apple.quarantine` extended attribute (normal for any browser-downloaded file)
+2. MikePDFViewer is currently signed "Sign to Run Locally" — it's NOT notarized by Apple
+
+When a quarantined file is opened by a non-notarized app, macOS Sequoia/Tahoe runs an async XProtect scan and pops the warning *after* the file already opened. Notarized apps (Preview, Word, Chrome, etc.) don't trigger this, which is why Mike has never seen this warning before.
+
+**Verification:** Run `xattr -l <file>` on the offending .eml — you'll see `com.apple.quarantine: 0081;...;Edge;...` (or Chrome, Safari, etc., depending on what downloaded it). The file's actual contents are fine.
+
+**Workarounds (don't fix the underlying issue):**
+- Per file: `xattr -d com.apple.quarantine "/path/to/file.eml"` strips the flag, file opens silently next time
+- Per folder: `xattr -dr com.apple.quarantine ~/Downloads` (be careful about applying to folders containing untrusted content)
+- Right-click → Open in Finder gives an "Open" button on a different (less scary) dialog
+
+**Real fixes (future work):**
+1. **Notarize the app** (preferred). Requires:
+   - Apple Developer Program membership ($99/yr)
+   - Developer ID Application certificate
+   - `xcrun notarytool submit` workflow added to the build script
+   - One-time setup, ~1–2 hours. Kills the warning permanently for all files this app ever opens.
+2. **Auto-strip quarantine on open** (NOT recommended for shared use). Add code in `loadEMLDocument` that calls `xattr -d com.apple.quarantine` on the URL before parsing. Loses macOS's ability to warn about genuinely malicious .eml content. Acceptable for personal use only.
+3. **Add a one-shot helper script** `unquarantine.sh` that the user runs on a folder of .eml files. Less invasive than option 2 but still manual.
+
+**Status:** Mike chose to live with the warning for now (April 30, 2026). Revisit if/when distributing the app to others or if the warning becomes annoying enough to justify notarization.
+
 ### User-Confirmed Working (v5.5–5.6)
 - Printing (Cmd+P, File > Print, toolbar button)
 - WYSIWYG signature: drag to move, drag corners to resize
