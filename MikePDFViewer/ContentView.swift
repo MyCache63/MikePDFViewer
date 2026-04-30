@@ -40,6 +40,13 @@ struct ContentView: View {
     @State private var editingFontBold = false
     @State private var editingFontItalic = false
     @State private var editingFontName = "Helvetica"
+    @State private var emlAttachments: [EMLAttachment] = []
+    @State private var emlMessage: EMLMessage?
+    @State private var isViewingEML: Bool = false
+    @State private var originalEMLURL: URL?
+    @State private var loadExternalImages: Bool = false
+    @State private var emlConversionError: String?
+    @State private var isConvertingEML: Bool = false
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -251,7 +258,7 @@ struct ContentView: View {
             annotationBar
             if showSplitView, let document = pdfDocument {
                 HSplitView {
-                    pdfContent
+                    pdfContentWithEMLSidebar
                     PDFKitView(
                         document: document,
                         currentPage: $splitCurrentPage,
@@ -261,13 +268,30 @@ struct ContentView: View {
                     )
                 }
             } else {
-                pdfContent
+                pdfContentWithEMLSidebar
             }
         }
         .sheet(isPresented: $showPresentation) {
             if let document = pdfDocument {
                 PresentationView(document: document, startPage: currentPage)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var pdfContentWithEMLSidebar: some View {
+        if isViewingEML {
+            HStack(spacing: 0) {
+                pdfContent
+                Divider()
+                AttachmentsSidebar(
+                    attachments: emlAttachments,
+                    loadExternalImages: $loadExternalImages,
+                    onReloadWithImages: { reloadEML() }
+                )
+            }
+        } else {
+            pdfContent
         }
     }
 
@@ -691,7 +715,9 @@ struct ContentView: View {
 
     private func openPDF() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.pdf]
+        var types: [UTType] = [.pdf]
+        if let emlType = UTType(filenameExtension: "eml") { types.append(emlType) }
+        panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
             recentFiles.add(url)
@@ -759,8 +785,20 @@ struct ContentView: View {
             pdfDocument = nil
             totalPages = 0
             currentPage = 0
+            isViewingEML = false
+            emlAttachments = []
+            emlMessage = nil
+            originalEMLURL = nil
             return
         }
+        if url.pathExtension.lowercased() == "eml" {
+            loadEMLDocument(from: url)
+        } else {
+            loadPDFDocument(from: url)
+        }
+    }
+
+    private func loadPDFDocument(from url: URL) {
         DispatchQueue.global(qos: .userInitiated).async {
             let doc = PDFDocument(url: url)
             let isLocked = doc?.isLocked ?? false
@@ -771,12 +809,53 @@ struct ContentView: View {
                 currentPage = 0
                 documentVersion = 0
                 formFieldCount = fields
+                isViewingEML = false
+                emlAttachments = []
+                emlMessage = nil
+                originalEMLURL = nil
                 bookmarkManager.load(for: url)
                 if isLocked {
                     showPasswordSheet = true
                 }
             }
         }
+    }
+
+    private func loadEMLDocument(from url: URL) {
+        isConvertingEML = true
+        emlConversionError = nil
+        originalEMLURL = url
+        Task {
+            do {
+                let data = try Data(contentsOf: url)
+                let message = try EMLParser.parse(data: data)
+                let doc = try await EMLToPDFConverter.convert(message, loadExternalImages: loadExternalImages)
+                await MainActor.run {
+                    pdfDocument = doc
+                    totalPages = doc.pageCount
+                    currentPage = 0
+                    documentVersion = 0
+                    formFieldCount = 0
+                    isViewingEML = true
+                    emlMessage = message
+                    emlAttachments = message.attachments
+                    bookmarkManager.load(for: url)
+                    isConvertingEML = false
+                }
+            } catch {
+                await MainActor.run {
+                    emlConversionError = error.localizedDescription
+                    isConvertingEML = false
+                    pdfDocument = nil
+                    totalPages = 0
+                }
+            }
+        }
+    }
+
+    private func reloadEML() {
+        guard let url = originalEMLURL else { return }
+        loadEMLDocument(from: url)
     }
 
     private static func countFormFields(_ document: PDFDocument?) -> Int {

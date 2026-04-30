@@ -1,12 +1,22 @@
-# MikePDFViewer Handover — March 11, 2026
+# MikePDFViewer Handover — April 30, 2026
 
-## Current State: v5.6 — Fully Tested, All Features Working
+## Current State: v5.7 — EML Support Added, Builds But Not Device-Tested
 
-**BUILD STATUS:** v5.6 builds, installed to `/Applications/MikePDFViewer.app`
-**Version tag:** `v5.6` on GitHub
+**BUILD STATUS:** v5.7 builds, installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
+**Safety tag:** `before-eml-support-apr30`
 
-### User-Confirmed Working (v5.5+)
+### v5.7 New Feature: EML (Email) File Viewing
+- Opens `.eml` files (Outlook, Gmail, Apple Mail format) the same way as PDFs
+- Custom MIME parser (RFC 822/2045/2046) — no external dependencies
+- Converts email to PDF via `WKWebView` print-to-PDF, then routes through existing PDFKit pipeline
+- All existing PDF features (annotations, search, print, save, watermark, signatures, OCR, comparison, image export) work on emails for free
+- Right-side attachments sidebar with Save/Open buttons per attachment
+- "Load remote images" toggle (off by default for privacy)
+- Inline images (cid:) auto-embedded as data URLs
+- Plan saved as `Add_eml_to_PDFViewer_Plan_v01_April29.md`
+
+### User-Confirmed Working (v5.5–5.6)
 - Printing (Cmd+P, File > Print, toolbar button)
 - WYSIWYG signature: drag to move, drag corners to resize
 - WYSIWYG free text: drag, resize, live text editing with font controls

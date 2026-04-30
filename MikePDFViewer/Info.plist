@@ -18,6 +18,44 @@
 				<string>com.adobe.pdf</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Email Message</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.email-message</string>
+				<string>com.mikeashe.MikePDFViewer.eml</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.mikeashe.MikePDFViewer.eml</string>
+			<key>UTTypeDescription</key>
+			<string>Email Message</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>eml</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>message/rfc822</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>

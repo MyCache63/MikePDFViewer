@@ -57,7 +57,7 @@ struct MikePDFViewerApp: App {
         .commands {
             // MARK: File Menu
             CommandGroup(replacing: .newItem) {
-                Button("Open PDF...") {
+                Button("Open PDF or Email...") {
                     openPDF()
                 }
                 .keyboardShortcut("o", modifiers: .command)
@@ -218,7 +218,9 @@ struct MikePDFViewerApp: App {
 
     private func openPDF() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.pdf]
+        var types: [UTType] = [.pdf]
+        if let emlType = UTType(filenameExtension: "eml") { types.append(emlType) }
+        panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
             recentFiles.add(url)

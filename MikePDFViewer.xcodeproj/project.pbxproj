@@ -32,6 +32,11 @@
 		AA000107 /* ExportImagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002F /* ExportImagesView.swift */; };
 		AA000108 /* PDFCompareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000110 /* PDFCompareService.swift */; };
 		AA000109 /* PDFCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000111 /* PDFCompareView.swift */; };
+		AA000200 /* EMLAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000300 /* EMLAttachment.swift */; };
+		AA000201 /* EMLMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000301 /* EMLMessage.swift */; };
+		AA000202 /* EMLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000302 /* EMLParser.swift */; };
+		AA000203 /* EMLToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000303 /* EMLToPDFConverter.swift */; };
+		AA000204 /* AttachmentsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000304 /* AttachmentsSidebar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,6 +68,11 @@
 		AA00002F /* ExportImagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportImagesView.swift; sourceTree = "<group>"; };
 		AA000110 /* PDFCompareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCompareService.swift; sourceTree = "<group>"; };
 		AA000111 /* PDFCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCompareView.swift; sourceTree = "<group>"; };
+		AA000300 /* EMLAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLAttachment.swift; sourceTree = "<group>"; };
+		AA000301 /* EMLMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLMessage.swift; sourceTree = "<group>"; };
+		AA000302 /* EMLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLParser.swift; sourceTree = "<group>"; };
+		AA000303 /* EMLToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLToPDFConverter.swift; sourceTree = "<group>"; };
+		AA000304 /* AttachmentsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentsSidebar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +124,11 @@
 				AA00002F /* ExportImagesView.swift */,
 				AA000110 /* PDFCompareService.swift */,
 				AA000111 /* PDFCompareView.swift */,
+				AA000300 /* EMLAttachment.swift */,
+				AA000301 /* EMLMessage.swift */,
+				AA000302 /* EMLParser.swift */,
+				AA000303 /* EMLToPDFConverter.swift */,
+				AA000304 /* AttachmentsSidebar.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -219,6 +234,11 @@
 				AA000107 /* ExportImagesView.swift in Sources */,
 				AA000108 /* PDFCompareService.swift in Sources */,
 				AA000109 /* PDFCompareView.swift in Sources */,
+				AA000200 /* EMLAttachment.swift in Sources */,
+				AA000201 /* EMLMessage.swift in Sources */,
+				AA000202 /* EMLParser.swift in Sources */,
+				AA000203 /* EMLToPDFConverter.swift in Sources */,
+				AA000204 /* AttachmentsSidebar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,7 +381,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -389,7 +409,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
