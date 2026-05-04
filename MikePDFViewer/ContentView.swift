@@ -56,6 +56,10 @@ struct ContentView: View {
     @State private var markdownAttributed: NSAttributedString?
     @State private var isViewingMarkdown: Bool = false
     @State private var originalMarkdownURL: URL?
+    @State private var isRenderingMarkdownPDF: Bool = false
+    @State private var renderedPDFTempURL: URL?
+    @State private var pendingRenderedSourceURL: URL?
+    @State private var showSaveRenderedPDFPrompt: Bool = false
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -206,6 +210,12 @@ struct ContentView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently remove the selected text by flattening affected pages to images. This cannot be undone.")
+            }
+            .alert("Save Rendered PDF?", isPresented: $showSaveRenderedPDFPrompt) {
+                Button("Save…") { confirmSaveRenderedPDF() }
+                Button("Keep in Temp", role: .cancel) {}
+            } message: {
+                Text("The PDF was rendered to a temporary file. Save it permanently to a folder of your choice, or leave it in the temp folder (auto-deleted after 7 days).")
             }
     }
 
@@ -382,6 +392,18 @@ struct ContentView: View {
         if let url = pdfURL {
             ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
                 .help("Share PDF")
+        }
+
+        if isViewingMarkdown {
+            Button { renderMarkdownAsPDF() } label: {
+                if isRenderingMarkdownPDF {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "doc.richtext")
+                }
+            }
+            .help("Render as PDF")
+            .disabled(isRenderingMarkdownPDF)
         }
 
         Divider()
@@ -837,6 +859,57 @@ struct ContentView: View {
         default:
             loadPDFDocument(from: url)
         }
+    }
+
+    private func renderMarkdownAsPDF() {
+        guard let doc = markdownDocument, let url = originalMarkdownURL else { return }
+        isRenderingMarkdownPDF = true
+        Task {
+            do {
+                let (pdfDoc, tempURL) = try await MarkdownToPDFConverter.convert(source: doc.source, sourceURL: url)
+                await MainActor.run {
+                    pdfDocument = pdfDoc
+                    totalPages = pdfDoc.pageCount
+                    currentPage = 0
+                    documentVersion = 0
+                    formFieldCount = 0
+                    isViewingMarkdown = false
+                    markdownDocument = nil
+                    markdownAttributed = nil
+                    renderedPDFTempURL = tempURL
+                    pendingRenderedSourceURL = url
+                    isRenderingMarkdownPDF = false
+                    showSaveRenderedPDFPrompt = true
+                }
+            } catch {
+                await MainActor.run {
+                    isRenderingMarkdownPDF = false
+                }
+            }
+        }
+    }
+
+    private func confirmSaveRenderedPDF() {
+        guard let tempURL = renderedPDFTempURL,
+              let sourceURL = pendingRenderedSourceURL else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.directoryURL = sourceURL.deletingLastPathComponent()
+        panel.nameFieldStringValue = sourceURL.deletingPathExtension().lastPathComponent + ".pdf"
+        if panel.runModal() == .OK, let dest = panel.url {
+            do {
+                if FileManager.default.fileExists(atPath: dest.path) {
+                    try FileManager.default.removeItem(at: dest)
+                }
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                renderedPDFTempURL = dest
+                pdfURL = dest
+            } catch {
+                // If move fails, fall back to copy.
+                try? FileManager.default.copyItem(at: tempURL, to: dest)
+            }
+        }
+        pendingRenderedSourceURL = nil
     }
 
     private func loadMarkdownDocument(from url: URL) {

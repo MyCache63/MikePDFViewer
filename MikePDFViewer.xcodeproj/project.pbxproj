@@ -42,6 +42,7 @@
 		AA000207 /* DOCXToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000307 /* DOCXToPDFConverter.swift */; };
 		AA000208 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000308 /* MarkdownDocument.swift */; };
 		AA000209 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000309 /* MarkdownView.swift */; };
+		AA00020A /* MarkdownToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030A /* MarkdownToPDFConverter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -83,6 +84,7 @@
 		AA000307 /* DOCXToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXToPDFConverter.swift; sourceTree = "<group>"; };
 		AA000308 /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
 		AA000309 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
+		AA00030A /* MarkdownToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownToPDFConverter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,6 +146,7 @@
 				AA000307 /* DOCXToPDFConverter.swift */,
 				AA000308 /* MarkdownDocument.swift */,
 				AA000309 /* MarkdownView.swift */,
+				AA00030A /* MarkdownToPDFConverter.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -259,6 +262,7 @@
 				AA000207 /* DOCXToPDFConverter.swift in Sources */,
 				AA000208 /* MarkdownDocument.swift in Sources */,
 				AA000209 /* MarkdownView.swift in Sources */,
+				AA00020A /* MarkdownToPDFConverter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
