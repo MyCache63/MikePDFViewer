@@ -36,13 +36,16 @@ final class DOCXToPDFConverter {
             let raw = String(data: htmlData, encoding: .utf8) ?? ""
             htmlBody = scaleInlineFontSizes(in: raw, factor: 1.5)
 
-            // Diagnostic: dump raw and scaled HTML to /tmp so we can verify the
-            // regex actually rewrites font declarations on real Word documents.
-            let baseName = url.deletingPathExtension().lastPathComponent
-            try? raw.write(toFile: "/tmp/MikePDFViewer-\(baseName)-raw.html",
-                           atomically: true, encoding: .utf8)
-            try? htmlBody.write(toFile: "/tmp/MikePDFViewer-\(baseName)-scaled.html",
-                                atomically: true, encoding: .utf8)
+            // Diagnostic: dump raw and scaled HTML next to the rendered PDFs so we
+            // can verify the regex actually rewrites font declarations on real Word
+            // documents. /tmp is outside the sandbox; TempFolderManager.tmpFolder
+            // resolves to ~/Library/Containers/<bundle>/Data/Documents/MikePDFViewer/tmp/
+            // which is writable from inside the sandbox.
+            let dumpFolder = TempFolderManager.tmpFolder
+            let rawPath = dumpFolder.appendingPathComponent("debug-docx-raw.html")
+            let scaledPath = dumpFolder.appendingPathComponent("debug-docx-scaled.html")
+            try? raw.write(to: rawPath, atomically: true, encoding: .utf8)
+            try? htmlBody.write(to: scaledPath, atomically: true, encoding: .utf8)
         } catch {
             throw ConversionError.htmlConversionFailed
         }
