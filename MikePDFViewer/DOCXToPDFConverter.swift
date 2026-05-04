@@ -56,9 +56,17 @@ final class DOCXToPDFConverter {
         let pageStyle = """
         <style>
         @page { margin: 0.5in; }
-        body { margin: 0; padding: 0; font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.45;
+        }
+        p { margin: 0.4em 0; }
         img { max-width: 100%; height: auto; }
-        table { max-width: 100%; }
+        table { max-width: 100%; border-collapse: collapse; margin: 0.6em 0; }
+        td, th { border: 1px solid #c0c0c0; padding: 4px 8px; vertical-align: top; }
         </style>
         """
 

@@ -17,8 +17,12 @@ struct MarkdownDocument {
         self.source = try String(contentsOf: url, encoding: .utf8)
     }
 
-    /// Render the markdown to a styled NSAttributedString. Applies visible styling
-    /// for headers, code blocks, blockquotes, inline code, bold and italic.
+    /// Render the markdown to a styled NSAttributedString.
+    ///
+    /// AttributedString(markdown:) gives us block structure via `presentationIntent`
+    /// but does not insert character-level newlines between blocks. We walk the runs
+    /// and rebuild a fresh NSMutableAttributedString, inserting paragraph breaks at
+    /// block boundaries and applying header/code/quote styling per block.
     func styledAttributedString() -> NSAttributedString {
         let parseOptions = AttributedString.MarkdownParsingOptions(
             allowsExtendedAttributes: true,
@@ -26,44 +30,61 @@ struct MarkdownDocument {
             failurePolicy: .returnPartiallyParsedIfPossible
         )
 
-        let attr: AttributedString
+        let parsed: AttributedString
         do {
-            attr = try AttributedString(markdown: source, options: parseOptions)
+            parsed = try AttributedString(markdown: source, options: parseOptions)
         } catch {
             return fallbackPlainText()
         }
 
-        // Convert to NSMutableAttributedString so we can apply AppKit fonts.
-        let mutable = NSMutableAttributedString(attr)
+        let result = NSMutableAttributedString()
         let bodyFont = NSFont.systemFont(ofSize: 13)
-        mutable.addAttribute(.font, value: bodyFont,
-                             range: NSRange(location: 0, length: mutable.length))
+        var prevBlockID: Int? = nil
+        var prevWasListItem = false
 
-        // Walk presentationIntent and inlinePresentationIntent runs to apply styling.
-        // These attribute keys come from the Foundation AttributedString markdown scope.
-        let intentKey = NSAttributedString.Key("NSPresentationIntent")
-        let inlineKey = NSAttributedString.Key("NSInlinePresentationIntent")
+        for run in parsed.runs {
+            let intent = run.presentationIntent
+            let currentID = intent?.blockIdentity
+            let isListItem = intent?.isListItem ?? false
 
-        mutable.enumerateAttribute(intentKey, in: NSRange(location: 0, length: mutable.length)) { value, range, _ in
-            guard let intent = value as? PresentationIntent else { return }
-            applyBlockStyle(mutable: mutable, range: range, intent: intent)
+            // Insert a separator if we crossed a block boundary.
+            if let prev = prevBlockID, prev != currentID {
+                let separator = (prevWasListItem && isListItem) ? "\n" : "\n\n"
+                result.append(NSAttributedString(string: separator))
+            }
+
+            let runText = String(parsed[run.range].characters)
+            let segment = NSMutableAttributedString(string: runText)
+            let segRange = NSRange(location: 0, length: segment.length)
+            segment.addAttribute(.font, value: bodyFont, range: segRange)
+
+            if let intent = intent {
+                applyBlockStyle(mutable: segment, range: segRange, intent: intent)
+            }
+            if let inline = run.inlinePresentationIntent {
+                applyInlineStyle(mutable: segment, range: segRange, inline: inline)
+            }
+
+            // Apply link styling for clickable URLs.
+            if let link = run.link {
+                segment.addAttribute(.link, value: link, range: segRange)
+                segment.addAttribute(.foregroundColor, value: NSColor.linkColor, range: segRange)
+                segment.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: segRange)
+            }
+
+            result.append(segment)
+            prevBlockID = currentID
+            prevWasListItem = isListItem
         }
 
-        mutable.enumerateAttribute(inlineKey, in: NSRange(location: 0, length: mutable.length)) { value, range, _ in
-            // The inline intent is stored as Int (raw value of InlinePresentationIntent option set).
-            guard let raw = value as? UInt else { return }
-            let inline = InlinePresentationIntent(rawValue: raw)
-            applyInlineStyle(mutable: mutable, range: range, inline: inline)
-        }
-
-        // Paragraph styling: line spacing for readability.
+        // Paragraph styling for line spacing.
         let para = NSMutableParagraphStyle()
         para.lineSpacing = 3
-        para.paragraphSpacing = 8
-        mutable.addAttribute(.paragraphStyle, value: para,
-                             range: NSRange(location: 0, length: mutable.length))
+        para.paragraphSpacing = 6
+        result.addAttribute(.paragraphStyle, value: para,
+                            range: NSRange(location: 0, length: result.length))
 
-        return mutable
+        return result
     }
 
     private func fallbackPlainText() -> NSAttributedString {
@@ -100,6 +121,27 @@ struct MarkdownDocument {
                                      value: NSColor.secondaryLabelColor,
                                      range: range)
 
+            case .listItem:
+                // Prepend a bullet marker. Detect if part of an ordered list via outer components.
+                let isOrdered = intent.components.contains(where: {
+                    if case .orderedList = $0.kind { return true } else { return false }
+                })
+                let marker: String
+                if isOrdered {
+                    if case let .listItem(ordinal) = component.kind {
+                        marker = "\(ordinal). "
+                    } else {
+                        marker = "• "
+                    }
+                } else {
+                    marker = "• "
+                }
+                let bullet = NSAttributedString(string: marker, attributes: [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ])
+                mutable.insert(bullet, at: range.location)
+
             default:
                 break
             }
@@ -130,8 +172,23 @@ struct MarkdownDocument {
                             range: NSRange) {
         mutable.enumerateAttribute(.font, in: range) { value, subRange, _ in
             let current = (value as? NSFont) ?? NSFont.systemFont(ofSize: 13)
-            let bolded = NSFontManager.shared.convert(current, toHaveTrait: mask)
-            mutable.addAttribute(.font, value: bolded, range: subRange)
+            let newFont = NSFontManager.shared.convert(current, toHaveTrait: mask)
+            mutable.addAttribute(.font, value: newFont, range: subRange)
         }
+    }
+}
+
+private extension PresentationIntent {
+    var isListItem: Bool {
+        components.contains { component in
+            if case .listItem = component.kind { return true }
+            return false
+        }
+    }
+
+    /// Identity of the deepest (leaf) block — uniquely identifies a single
+    /// paragraph / header / list item etc.
+    var blockIdentity: Int? {
+        components.first?.identity
     }
 }
