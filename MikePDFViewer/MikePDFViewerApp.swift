@@ -78,6 +78,28 @@ struct MikePDFViewerApp: App {
 
                 Divider()
 
+                Menu("Open With") {
+                    if let url = focusedURL {
+                        let kind = OpenWithFileKind.detect(url: url)
+                        let apps = OpenWithHelpers.curatedApps(for: kind)
+                        ForEach(apps, id: \.self) { app in
+                            Button(OpenWithHelpers.displayName(for: app)) {
+                                OpenWithHelpers.openIn(app: app, file: url)
+                            }
+                        }
+                        if !apps.isEmpty {
+                            Divider()
+                        }
+                        Button("Other…") {
+                            OpenWithHelpers.showOtherPicker(file: url)
+                        }
+                    } else {
+                        Text("No file open")
+                    }
+                }
+
+                Divider()
+
                 Button("Merge PDFs...") {
                     NotificationCenter.default.post(name: .pdfShowMerge, object: nil)
                 }

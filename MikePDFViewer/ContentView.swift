@@ -66,6 +66,20 @@ struct ContentView: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     }
 
+    /// URL to use for "Open With" actions — always the user-facing source, not a
+    /// rendered tmp PDF. Falls back through markdown → docx → eml → pdfURL.
+    private var openWithSourceURL: URL? {
+        if let url = originalMarkdownURL { return url }
+        if let url = originalDOCXURL { return url }
+        if let url = originalEMLURL { return url }
+        return pdfURL
+    }
+
+    private var openWithFileKind: OpenWithFileKind {
+        guard let url = openWithSourceURL else { return .other }
+        return OpenWithFileKind.detect(url: url)
+    }
+
     var body: some View {
         viewWithNotifications
             .sheet(isPresented: $showMergeSheet) {
@@ -393,6 +407,8 @@ struct ContentView: View {
             ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
                 .help("Share PDF")
         }
+
+        OpenWithMenu(fileURL: openWithSourceURL, fileKind: openWithFileKind)
 
         if isViewingMarkdown {
             Button { renderMarkdownAsPDF() } label: {
