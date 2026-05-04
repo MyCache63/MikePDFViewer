@@ -52,6 +52,10 @@ struct ContentView: View {
     @State private var docxTempPDFURL: URL?
     @State private var docxConversionError: String?
     @State private var isConvertingDOCX: Bool = false
+    @State private var markdownDocument: MarkdownDocument?
+    @State private var markdownAttributed: NSAttributedString?
+    @State private var isViewingMarkdown: Bool = false
+    @State private var originalMarkdownURL: URL?
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -249,6 +253,22 @@ struct ContentView: View {
                     deletePages(pageIndices)
                 }
             )
+        } else if isViewingMarkdown {
+            VStack {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text("Markdown")
+                    .foregroundStyle(.secondary)
+                if let url = originalMarkdownURL {
+                    Text(url.lastPathComponent)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
+            }
+            .frame(maxHeight: .infinity)
         } else {
             VStack {
                 Text("No PDF Open")
@@ -285,7 +305,9 @@ struct ContentView: View {
 
     @ViewBuilder
     private var pdfContentWithEMLSidebar: some View {
-        if isViewingEML {
+        if isViewingMarkdown, let attr = markdownAttributed {
+            MarkdownView(attributedString: attr)
+        } else if isViewingEML {
             HStack(spacing: 0) {
                 pdfContent
                 Divider()
@@ -799,6 +821,10 @@ struct ContentView: View {
             isViewingDOCX = false
             originalDOCXURL = nil
             docxTempPDFURL = nil
+            isViewingMarkdown = false
+            originalMarkdownURL = nil
+            markdownDocument = nil
+            markdownAttributed = nil
             return
         }
         switch url.pathExtension.lowercased() {
@@ -806,8 +832,38 @@ struct ContentView: View {
             loadEMLDocument(from: url)
         case "docx":
             loadDOCXDocument(from: url)
+        case "md", "markdown":
+            loadMarkdownDocument(from: url)
         default:
             loadPDFDocument(from: url)
+        }
+    }
+
+    private func loadMarkdownDocument(from url: URL) {
+        do {
+            let doc = try MarkdownDocument(url: url)
+            let styled = doc.styledAttributedString()
+            pdfDocument = nil
+            totalPages = 0
+            currentPage = 0
+            documentVersion = 0
+            formFieldCount = 0
+            isViewingEML = false
+            emlAttachments = []
+            emlMessage = nil
+            originalEMLURL = nil
+            isViewingDOCX = false
+            originalDOCXURL = nil
+            docxTempPDFURL = nil
+            isViewingMarkdown = true
+            originalMarkdownURL = url
+            markdownDocument = doc
+            markdownAttributed = styled
+        } catch {
+            isViewingMarkdown = false
+            originalMarkdownURL = nil
+            markdownDocument = nil
+            markdownAttributed = nil
         }
     }
 
@@ -829,6 +885,10 @@ struct ContentView: View {
                 isViewingDOCX = false
                 originalDOCXURL = nil
                 docxTempPDFURL = nil
+                isViewingMarkdown = false
+                originalMarkdownURL = nil
+                markdownDocument = nil
+                markdownAttributed = nil
                 bookmarkManager.load(for: url)
                 if isLocked {
                     showPasswordSheet = true
@@ -856,6 +916,10 @@ struct ContentView: View {
                     originalEMLURL = nil
                     isViewingDOCX = true
                     docxTempPDFURL = tempURL
+                    isViewingMarkdown = false
+                    originalMarkdownURL = nil
+                    markdownDocument = nil
+                    markdownAttributed = nil
                     bookmarkManager.load(for: url)
                     isConvertingDOCX = false
                 }
@@ -891,6 +955,10 @@ struct ContentView: View {
                     isViewingDOCX = false
                     originalDOCXURL = nil
                     docxTempPDFURL = nil
+                    isViewingMarkdown = false
+                    originalMarkdownURL = nil
+                    markdownDocument = nil
+                    markdownAttributed = nil
                     bookmarkManager.load(for: url)
                     isConvertingEML = false
                 }
