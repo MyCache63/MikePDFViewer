@@ -33,7 +33,8 @@ final class DOCXToPDFConverter {
                 from: NSRange(location: 0, length: attrStr.length),
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.html]
             )
-            htmlBody = String(data: htmlData, encoding: .utf8) ?? ""
+            let raw = String(data: htmlData, encoding: .utf8) ?? ""
+            htmlBody = scaleInlineFontSizes(in: raw, factor: 1.4)
         } catch {
             throw ConversionError.htmlConversionFailed
         }
@@ -47,6 +48,32 @@ final class DOCXToPDFConverter {
 
         let tempURL = try TempFolderManager.writeToTemp(data: pdfData, sourceURL: url)
         return (document, tempURL)
+    }
+
+    /// NSAttributedString's HTML serializer emits inline styles like
+    /// `font: 12.0px 'Calibri'` on every paragraph. Those inline declarations win over
+    /// any stylesheet rules, so we can't bump the body font via CSS — we have to rewrite
+    /// the inline declarations themselves. Scaling all sizes by a constant preserves the
+    /// relative heading hierarchy while making body text readable on a US Letter page.
+    private static func scaleInlineFontSizes(in html: String, factor: Double) -> String {
+        let pattern = #"font:\s*([\d.]+)(px|pt)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return html
+        }
+        let nsString = html as NSString
+        let fullRange = NSRange(location: 0, length: nsString.length)
+        let matches = regex.matches(in: html, options: [], range: fullRange)
+
+        let mutable = NSMutableString(string: html)
+        for match in matches.reversed() {
+            let sizeStr = nsString.substring(with: match.range(at: 1))
+            let unit = nsString.substring(with: match.range(at: 2))
+            guard let size = Double(sizeStr) else { continue }
+            let scaled = String(format: "%.1f", size * factor)
+            let replacement = "font: \(scaled)\(unit)"
+            mutable.replaceCharacters(in: match.range, with: replacement)
+        }
+        return mutable as String
     }
 
     /// NSAttributedString's HTML output already includes a <html><head>...<body> wrapper with
