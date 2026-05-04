@@ -1,5 +1,4 @@
 import Foundation
-import WebKit
 import PDFKit
 import AppKit
 
@@ -249,89 +248,6 @@ final class EMLToPDFConverter: NSObject {
     // MARK: - PDF Rendering via WKWebView
 
     private static func renderHTMLToPDF(html: String, loadExternalImages: Bool) async throws -> Data {
-        let renderer = WebViewPDFRenderer(loadExternalImages: loadExternalImages)
-        return try await renderer.render(html: html)
-    }
-}
-
-// Helper class to manage the WKWebView lifecycle and PDF rendering
-@MainActor
-private final class WebViewPDFRenderer: NSObject, WKNavigationDelegate {
-    private let webView: WKWebView
-    private var continuation: CheckedContinuation<Data, Error>?
-    private let loadExternalImages: Bool
-
-    init(loadExternalImages: Bool) {
-        let config = WKWebViewConfiguration()
-        let prefs = WKWebpagePreferences()
-        prefs.allowsContentJavaScript = false
-        config.defaultWebpagePreferences = prefs
-
-        // 8.5x11 inch page at 96 DPI = 816x1056
-        let frame = NSRect(x: 0, y: 0, width: 816, height: 1056)
-        self.webView = WKWebView(frame: frame, configuration: config)
-        self.loadExternalImages = loadExternalImages
-        super.init()
-        self.webView.navigationDelegate = self
-    }
-
-    func render(html: String) async throws -> Data {
-        return try await withCheckedThrowingContinuation { cont in
-            self.continuation = cont
-            webView.loadHTMLString(html, baseURL: nil)
-        }
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        Task { @MainActor in
-            // Allow layout to settle
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            let config = WKPDFConfiguration()
-            config.rect = nil  // capture full content height
-            webView.createPDF(configuration: config) { [weak self] result in
-                guard let self else { return }
-                Task { @MainActor in
-                    switch result {
-                    case .success(let data):
-                        self.continuation?.resume(returning: data)
-                    case .failure(let error):
-                        self.continuation?.resume(throwing: error)
-                    }
-                    self.continuation = nil
-                }
-            }
-        }
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        Task { @MainActor in
-            self.continuation?.resume(throwing: error)
-            self.continuation = nil
-        }
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        Task { @MainActor in
-            self.continuation?.resume(throwing: error)
-            self.continuation = nil
-        }
-    }
-
-    nonisolated func webView(_ webView: WKWebView,
-                             decidePolicyFor navigationAction: WKNavigationAction,
-                             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        Task { @MainActor in
-            // Only allow the initial loadHTMLString navigation. Block all subsequent network requests.
-            if navigationAction.request.url == nil || navigationAction.navigationType == .other {
-                decisionHandler(.allow)
-                return
-            }
-            if !self.loadExternalImages, let scheme = navigationAction.request.url?.scheme,
-               (scheme == "http" || scheme == "https") {
-                decisionHandler(.cancel)
-                return
-            }
-            decisionHandler(.allow)
-        }
+        return try await HTMLToPDFRenderer.render(html: html, loadExternalImages: loadExternalImages)
     }
 }

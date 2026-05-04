@@ -37,6 +37,7 @@
 		AA000202 /* EMLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000302 /* EMLParser.swift */; };
 		AA000203 /* EMLToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000303 /* EMLToPDFConverter.swift */; };
 		AA000204 /* AttachmentsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000304 /* AttachmentsSidebar.swift */; };
+		AA000205 /* HTMLToPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000305 /* HTMLToPDFRenderer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -73,6 +74,7 @@
 		AA000302 /* EMLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLParser.swift; sourceTree = "<group>"; };
 		AA000303 /* EMLToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLToPDFConverter.swift; sourceTree = "<group>"; };
 		AA000304 /* AttachmentsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentsSidebar.swift; sourceTree = "<group>"; };
+		AA000305 /* HTMLToPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLToPDFRenderer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -129,6 +131,7 @@
 				AA000302 /* EMLParser.swift */,
 				AA000303 /* EMLToPDFConverter.swift */,
 				AA000304 /* AttachmentsSidebar.swift */,
+				AA000305 /* HTMLToPDFRenderer.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -239,6 +242,7 @@
 				AA000202 /* EMLParser.swift in Sources */,
 				AA000203 /* EMLToPDFConverter.swift in Sources */,
 				AA000204 /* AttachmentsSidebar.swift in Sources */,
+				AA000205 /* HTMLToPDFRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
