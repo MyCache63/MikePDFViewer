@@ -1,10 +1,29 @@
-# MikePDFViewer Handover — April 30, 2026
+# MikePDFViewer Handover — May 4, 2026
 
-## Current State: v5.7 — EML Support Added, Builds But Not Device-Tested
+## Current State: v5.8 — Markdown & DOCX Support Added, Builds But Not Device-Tested
 
-**BUILD STATUS:** v5.7 builds, installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v5.8 builds, installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Safety tag:** `before-eml-support-apr30`
+**Safety tag:** `before-md-docx-may4` (v5.8 starting point), `before-eml-support-apr30` (v5.7 starting point)
+
+### v5.8 New Features: Markdown (.md) and Word (.docx) viewing + Open With
+- **DOCX viewing:** Opens `.docx` files via `NSAttributedString(officeOpenXML)` → HTML → shared `HTMLToPDFRenderer` → PDFKit. All existing PDF features (search, annotations, print, etc.) work on Word docs for free.
+- **Markdown quick view:** Opens `.md` and `.markdown` files with fancy Xcode-style formatting using `AttributedString(markdown:)` rendered in NSTextView. Headers, code blocks, blockquotes, inline code, bold, italic, clickable links.
+- **Markdown pretty PDF:** "Render as PDF" toolbar button (doc.richtext icon, only visible when viewing .md) converts the markdown to a styled PDF via the shared HTMLToPDF pipeline. After render, prompts to save permanently (defaults to source folder + .pdf name) or keep in temp folder.
+- **Open With menu:** New toolbar button + File → Open With submenu. Curated app list filtered per file type (Word/Pages/TextEdit for .docx; Xcode/VS Code/TextEdit/BBEdit for .md; Mail/Outlook for .eml; Preview/Adobe/Word/Xcode for .pdf). Only shows apps actually installed. "Other…" item invokes the system app picker. Always operates on the original source URL, never the converted tmp PDF.
+- **Temp folder:** `~/Documents/MikePDFViewer/tmp/` holds rendered PDFs from .md and .docx conversions. 7-day auto-purge runs on app launch. "Clear Rendered Temp Files" item in Tools menu for manual cleanup.
+- **Refactor:** Extracted `WebViewPDFRenderer` from `EMLToPDFConverter.swift` into a new shared `HTMLToPDFRenderer.swift`. EML, MD, and DOCX all share one renderer.
+- **Plan:** `MikePDFViewer_AddMD_Docx_plan_v01_May4.md`
+
+### v5.7 Feature: EML (Email) File Viewing
+- Opens `.eml` files (Outlook, Gmail, Apple Mail format) the same way as PDFs
+- Custom MIME parser (RFC 822/2045/2046) — no external dependencies
+- Converts email to PDF via `WKWebView` print-to-PDF, then routes through existing PDFKit pipeline
+- All existing PDF features (annotations, search, print, save, watermark, signatures, OCR, comparison, image export) work on emails for free
+- Right-side attachments sidebar with Save/Open buttons per attachment
+- "Load remote images" toggle (off by default for privacy)
+- Inline images (cid:) auto-embedded as data URLs
+- Plan saved as `Add_eml_to_PDFViewer_Plan_v01_April29.md`
 
 ### v5.7 New Feature: EML (Email) File Viewing
 - Opens `.eml` files (Outlook, Gmail, Apple Mail format) the same way as PDFs

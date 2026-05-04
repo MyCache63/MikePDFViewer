@@ -49,6 +49,11 @@ struct MikePDFViewerApp: App {
     @FocusedValue(\.isDarkMode) var isDarkMode
     @FocusedValue(\.displayModeRawValue) var displayModeRaw
 
+    init() {
+        // Purge any temp PDFs older than 7 days at app launch.
+        TempFolderManager.purgeOldFiles()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -155,6 +160,12 @@ struct MikePDFViewerApp: App {
                     NotificationCenter.default.post(name: .pdfExtractPages, object: nil)
                 }
                 .disabled(focusedDocument == nil)
+
+                Divider()
+
+                Button("Clear Rendered Temp Files") {
+                    TempFolderManager.clearAll()
+                }
             }
 
             // MARK: View Menu
