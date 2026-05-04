@@ -38,6 +38,8 @@
 		AA000203 /* EMLToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000303 /* EMLToPDFConverter.swift */; };
 		AA000204 /* AttachmentsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000304 /* AttachmentsSidebar.swift */; };
 		AA000205 /* HTMLToPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000305 /* HTMLToPDFRenderer.swift */; };
+		AA000206 /* TempFolderManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000306 /* TempFolderManager.swift */; };
+		AA000207 /* DOCXToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000307 /* DOCXToPDFConverter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +77,8 @@
 		AA000303 /* EMLToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EMLToPDFConverter.swift; sourceTree = "<group>"; };
 		AA000304 /* AttachmentsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentsSidebar.swift; sourceTree = "<group>"; };
 		AA000305 /* HTMLToPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLToPDFRenderer.swift; sourceTree = "<group>"; };
+		AA000306 /* TempFolderManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempFolderManager.swift; sourceTree = "<group>"; };
+		AA000307 /* DOCXToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXToPDFConverter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -132,6 +136,8 @@
 				AA000303 /* EMLToPDFConverter.swift */,
 				AA000304 /* AttachmentsSidebar.swift */,
 				AA000305 /* HTMLToPDFRenderer.swift */,
+				AA000306 /* TempFolderManager.swift */,
+				AA000307 /* DOCXToPDFConverter.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -243,6 +249,8 @@
 				AA000203 /* EMLToPDFConverter.swift in Sources */,
 				AA000204 /* AttachmentsSidebar.swift in Sources */,
 				AA000205 /* HTMLToPDFRenderer.swift in Sources */,
+				AA000206 /* TempFolderManager.swift in Sources */,
+				AA000207 /* DOCXToPDFConverter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

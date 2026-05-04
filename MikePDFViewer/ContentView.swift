@@ -47,6 +47,11 @@ struct ContentView: View {
     @State private var loadExternalImages: Bool = false
     @State private var emlConversionError: String?
     @State private var isConvertingEML: Bool = false
+    @State private var isViewingDOCX: Bool = false
+    @State private var originalDOCXURL: URL?
+    @State private var docxTempPDFURL: URL?
+    @State private var docxConversionError: String?
+    @State private var isConvertingDOCX: Bool = false
     @StateObject private var bookmarkManager = BookmarkManager()
 
     private var appVersion: String {
@@ -717,6 +722,8 @@ struct ContentView: View {
         let panel = NSOpenPanel()
         var types: [UTType] = [.pdf]
         if let emlType = UTType(filenameExtension: "eml") { types.append(emlType) }
+        if let docxType = UTType(filenameExtension: "docx") { types.append(docxType) }
+        if let mdType = UTType(filenameExtension: "md") { types.append(mdType) }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -789,11 +796,17 @@ struct ContentView: View {
             emlAttachments = []
             emlMessage = nil
             originalEMLURL = nil
+            isViewingDOCX = false
+            originalDOCXURL = nil
+            docxTempPDFURL = nil
             return
         }
-        if url.pathExtension.lowercased() == "eml" {
+        switch url.pathExtension.lowercased() {
+        case "eml":
             loadEMLDocument(from: url)
-        } else {
+        case "docx":
+            loadDOCXDocument(from: url)
+        default:
             loadPDFDocument(from: url)
         }
     }
@@ -813,9 +826,45 @@ struct ContentView: View {
                 emlAttachments = []
                 emlMessage = nil
                 originalEMLURL = nil
+                isViewingDOCX = false
+                originalDOCXURL = nil
+                docxTempPDFURL = nil
                 bookmarkManager.load(for: url)
                 if isLocked {
                     showPasswordSheet = true
+                }
+            }
+        }
+    }
+
+    private func loadDOCXDocument(from url: URL) {
+        isConvertingDOCX = true
+        docxConversionError = nil
+        originalDOCXURL = url
+        Task {
+            do {
+                let (doc, tempURL) = try await DOCXToPDFConverter.convert(url: url)
+                await MainActor.run {
+                    pdfDocument = doc
+                    totalPages = doc.pageCount
+                    currentPage = 0
+                    documentVersion = 0
+                    formFieldCount = 0
+                    isViewingEML = false
+                    emlAttachments = []
+                    emlMessage = nil
+                    originalEMLURL = nil
+                    isViewingDOCX = true
+                    docxTempPDFURL = tempURL
+                    bookmarkManager.load(for: url)
+                    isConvertingDOCX = false
+                }
+            } catch {
+                await MainActor.run {
+                    docxConversionError = error.localizedDescription
+                    isConvertingDOCX = false
+                    pdfDocument = nil
+                    totalPages = 0
                 }
             }
         }
@@ -839,6 +888,9 @@ struct ContentView: View {
                     isViewingEML = true
                     emlMessage = message
                     emlAttachments = message.attachments
+                    isViewingDOCX = false
+                    originalDOCXURL = nil
+                    docxTempPDFURL = nil
                     bookmarkManager.load(for: url)
                     isConvertingEML = false
                 }
