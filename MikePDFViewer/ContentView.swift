@@ -54,6 +54,7 @@ struct ContentView: View {
     @State private var isConvertingDOCX: Bool = false
     @State private var markdownDocument: MarkdownDocument?
     @State private var markdownAttributed: NSAttributedString?
+    @State private var markdownAnchors: [String: NSRange] = [:]
     @State private var isViewingMarkdown: Bool = false
     @State private var originalMarkdownURL: URL?
     @State private var isRenderingMarkdownPDF: Bool = false
@@ -330,7 +331,7 @@ struct ContentView: View {
     @ViewBuilder
     private var pdfContentWithEMLSidebar: some View {
         if isViewingMarkdown, let attr = markdownAttributed {
-            MarkdownView(attributedString: attr)
+            MarkdownView(attributedString: attr, anchors: markdownAnchors)
         } else if isViewingEML {
             HStack(spacing: 0) {
                 pdfContent
@@ -863,6 +864,7 @@ struct ContentView: View {
             originalMarkdownURL = nil
             markdownDocument = nil
             markdownAttributed = nil
+            markdownAnchors = [:]
             return
         }
         switch url.pathExtension.lowercased() {
@@ -892,6 +894,7 @@ struct ContentView: View {
                     isViewingMarkdown = false
                     markdownDocument = nil
                     markdownAttributed = nil
+                    markdownAnchors = [:]
                     renderedPDFTempURL = tempURL
                     pendingRenderedSourceURL = url
                     isRenderingMarkdownPDF = false
@@ -931,7 +934,7 @@ struct ContentView: View {
     private func loadMarkdownDocument(from url: URL) {
         do {
             let doc = try MarkdownDocument(url: url)
-            let styled = doc.styledAttributedString()
+            let (styled, anchors) = doc.styledAttributedStringWithAnchors()
             pdfDocument = nil
             totalPages = 0
             currentPage = 0
@@ -948,11 +951,13 @@ struct ContentView: View {
             originalMarkdownURL = url
             markdownDocument = doc
             markdownAttributed = styled
+            markdownAnchors = anchors
         } catch {
             isViewingMarkdown = false
             originalMarkdownURL = nil
             markdownDocument = nil
             markdownAttributed = nil
+            markdownAnchors = [:]
         }
     }
 
@@ -978,6 +983,7 @@ struct ContentView: View {
                 originalMarkdownURL = nil
                 markdownDocument = nil
                 markdownAttributed = nil
+                markdownAnchors = [:]
                 bookmarkManager.load(for: url)
                 if isLocked {
                     showPasswordSheet = true
@@ -1009,6 +1015,7 @@ struct ContentView: View {
                     originalMarkdownURL = nil
                     markdownDocument = nil
                     markdownAttributed = nil
+                    markdownAnchors = [:]
                     bookmarkManager.load(for: url)
                     isConvertingDOCX = false
                 }
@@ -1048,6 +1055,7 @@ struct ContentView: View {
                     originalMarkdownURL = nil
                     markdownDocument = nil
                     markdownAttributed = nil
+                    markdownAnchors = [:]
                     bookmarkManager.load(for: url)
                     isConvertingEML = false
                 }

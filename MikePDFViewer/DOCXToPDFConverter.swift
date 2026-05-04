@@ -34,7 +34,15 @@ final class DOCXToPDFConverter {
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.html]
             )
             let raw = String(data: htmlData, encoding: .utf8) ?? ""
-            htmlBody = scaleInlineFontSizes(in: raw, factor: 1.4)
+            htmlBody = scaleInlineFontSizes(in: raw, factor: 1.5)
+
+            // Diagnostic: dump raw and scaled HTML to /tmp so we can verify the
+            // regex actually rewrites font declarations on real Word documents.
+            let baseName = url.deletingPathExtension().lastPathComponent
+            try? raw.write(toFile: "/tmp/MikePDFViewer-\(baseName)-raw.html",
+                           atomically: true, encoding: .utf8)
+            try? htmlBody.write(toFile: "/tmp/MikePDFViewer-\(baseName)-scaled.html",
+                                atomically: true, encoding: .utf8)
         } catch {
             throw ConversionError.htmlConversionFailed
         }
