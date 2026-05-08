@@ -11,3 +11,7 @@ test_llm_ocr.py
 ocr_test_output.txt
 ocr_comparison/
 *.pdf
+
+# Word lockfiles
+~$*.docx
+~$*.doc
