@@ -1,10 +1,23 @@
-# MikePDFViewer Handover — May 4, 2026
+# MikePDFViewer Handover — May 8, 2026
 
-## Current State: v5.8 — Markdown & DOCX Support Added, Builds But Not Device-Tested
+## Current State: v5.8.4 — Markdown & DOCX Support Live, Patches Through .4
 
-**BUILD STATUS:** v5.8 builds, installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v5.8.4 builds, installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Safety tag:** `before-md-docx-may4` (v5.8 starting point), `before-eml-support-apr30` (v5.7 starting point)
+**Safety tags:** `before-md-docx-may4` (v5.8 starting point), `before-md-render-fix-may4`, `before-eml-support-apr30`
+
+### v5.8.x patch history
+- **5.8.0** — Initial MD + DOCX + Open With + temp folder support.
+- **5.8.1** — DOCX font scaling (1.4×) via inline-style regex; MD newline fix between blocks.
+- **5.8.2** — MD anchor-link clicks (TOC `[link](#slug)`) now scroll instead of LaunchServices error -50. DOCX diagnostic dump.
+- **5.8.3** — Diagnostic dump moved inside the sandbox (`~/Library/Containers/.../Data/Documents/MikePDFViewer/tmp/`) — `/tmp` writes were silently failing.
+- **5.8.4** — DOCX scaling bumped to 1.8×. New CSS rule treats Word's `<p><b>line</b></p>` (plain bold lines, no Heading style) as visual headings — gives DOCX docs that lacked Heading styles a hierarchy. Diagnostic dump removed (regex confirmed working in 5.8.3 trace).
+
+### Known sandbox quirk (mostly cosmetic)
+The app is sandboxed (`com.apple.security.app-sandbox = true`). Rendered tmp PDFs land in the container's Documents (`~/Library/Containers/com.mikeashe.MikePDFViewer/Data/Documents/MikePDFViewer/tmp/`), not the user-facing `~/Documents/MikePDFViewer/tmp/` the original plan called for. Functional but not "easy for Mike to find in Finder." To fix would need either the `com.apple.security.files.documents.read-write` entitlement (Apple may flag at notarization) or a user-prompted save destination.
+
+### v6 plan
+See `MikePDFViewer_AddMDReader_Plan_v01_May8.md` (and `.docx`) for the proposed v6 work: a richer MD reader with multiple reading themes, font/spacing controls, focus mode, TOC sidebar, etc.
 
 ### v5.8 New Features: Markdown (.md) and Word (.docx) viewing + Open With
 - **DOCX viewing:** Opens `.docx` files via `NSAttributedString(officeOpenXML)` → HTML → shared `HTMLToPDFRenderer` → PDFKit. All existing PDF features (search, annotations, print, etc.) work on Word docs for free.

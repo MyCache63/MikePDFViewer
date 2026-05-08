@@ -34,18 +34,7 @@ final class DOCXToPDFConverter {
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.html]
             )
             let raw = String(data: htmlData, encoding: .utf8) ?? ""
-            htmlBody = scaleInlineFontSizes(in: raw, factor: 1.5)
-
-            // Diagnostic: dump raw and scaled HTML next to the rendered PDFs so we
-            // can verify the regex actually rewrites font declarations on real Word
-            // documents. /tmp is outside the sandbox; TempFolderManager.tmpFolder
-            // resolves to ~/Library/Containers/<bundle>/Data/Documents/MikePDFViewer/tmp/
-            // which is writable from inside the sandbox.
-            let dumpFolder = TempFolderManager.tmpFolder
-            let rawPath = dumpFolder.appendingPathComponent("debug-docx-raw.html")
-            let scaledPath = dumpFolder.appendingPathComponent("debug-docx-scaled.html")
-            try? raw.write(to: rawPath, atomically: true, encoding: .utf8)
-            try? htmlBody.write(to: scaledPath, atomically: true, encoding: .utf8)
+            htmlBody = scaleInlineFontSizes(in: raw, factor: 1.8)
         } catch {
             throw ConversionError.htmlConversionFailed
         }
@@ -105,6 +94,16 @@ final class DOCXToPDFConverter {
         img { max-width: 100%; height: auto; }
         table { max-width: 100%; border-collapse: collapse; margin: 0.6em 0; }
         td, th { border: 1px solid #c0c0c0; padding: 4px 8px; vertical-align: top; }
+        /* Word docs that use plain bold lines instead of Heading styles get
+           heading-like rendering: a paragraph whose only child is <b> looks
+           visually distinct from body text. */
+        p > b:only-child {
+            display: block;
+            font-size: 1.35em !important;
+            margin-top: 0.7em !important;
+            margin-bottom: 0.3em !important;
+            color: #000;
+        }
         </style>
         """
 
