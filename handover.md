@@ -1,10 +1,16 @@
 # MikePDFViewer Handover — May 8, 2026
 
-## Current State: v5.8.4 — Markdown & DOCX Support Live, Patches Through .4
+## Current State: v5.9.0 — v6 Reader MVP (Phases 1 + 2) Live
 
-**BUILD STATUS:** v5.8.4 builds, installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v5.9.0 builds, installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Safety tags:** `before-md-docx-may4` (v5.8 starting point), `before-md-render-fix-may4`, `before-eml-support-apr30`
+**Safety tags:** `before-md-reader-may8` (v5.9.0 starting point), `before-md-docx-may4`, `before-md-render-fix-may4`, `before-eml-support-apr30`
+
+### v5.9.0 — v6 Reader MVP (Phases 1 + 2 of v6 plan)
+- **Phase 1 refactor:** Extracted markdown→HTML emitter into a shared `MarkdownToHTML.swift`. Used by both `MarkdownToPDFConverter` (Render-as-PDF) and the new `MarkdownReaderView`.
+- **Phase 2 Reader view:** New `MarkdownReaderView` built on WKWebView with a bundled GitHub-style CSS theme. Honors `prefers-color-scheme` so it picks light/dark from system automatically. Anchor links scroll within the page; external http(s)/mailto open in default browser.
+- **Mode toggle:** New toolbar button (book icon → Reader, doc.plaintext icon → Quick) lets you flip between the new Reader and the legacy NSTextView Quick view. Default is Reader.
+- **Plan reference:** `MikePDFViewer_AddMDReader_Plan_v01_May8.md` — phases 3-8 still pending (themes, typography controls, focus mode, TOC sidebar, reading stats, theme-aware Render-as-PDF, polish).
 
 ### v5.8.x patch history
 - **5.8.0** — Initial MD + DOCX + Open With + temp folder support.

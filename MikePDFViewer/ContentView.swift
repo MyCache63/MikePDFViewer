@@ -57,6 +57,7 @@ struct ContentView: View {
     @State private var markdownAnchors: [String: NSRange] = [:]
     @State private var isViewingMarkdown: Bool = false
     @State private var originalMarkdownURL: URL?
+    @State private var markdownMode: MarkdownMode = .reader
     @State private var isRenderingMarkdownPDF: Bool = false
     @State private var renderedPDFTempURL: URL?
     @State private var pendingRenderedSourceURL: URL?
@@ -330,8 +331,17 @@ struct ContentView: View {
 
     @ViewBuilder
     private var pdfContentWithEMLSidebar: some View {
-        if isViewingMarkdown, let attr = markdownAttributed {
-            MarkdownView(attributedString: attr, anchors: markdownAnchors)
+        if isViewingMarkdown, let doc = markdownDocument {
+            switch markdownMode {
+            case .reader:
+                MarkdownReaderView(source: doc.source, baseURL: originalMarkdownURL)
+            case .quick:
+                if let attr = markdownAttributed {
+                    MarkdownView(attributedString: attr, anchors: markdownAnchors)
+                } else {
+                    Text("Loading…").foregroundStyle(.secondary)
+                }
+            }
         } else if isViewingEML {
             HStack(spacing: 0) {
                 pdfContent
@@ -412,6 +422,13 @@ struct ContentView: View {
         OpenWithMenu(fileURL: openWithSourceURL, fileKind: openWithFileKind)
 
         if isViewingMarkdown {
+            Button {
+                markdownMode = (markdownMode == .reader) ? .quick : .reader
+            } label: {
+                Image(systemName: markdownMode == .reader ? "book" : "doc.plaintext")
+            }
+            .help(markdownMode == .reader ? "Switch to Quick view" : "Switch to Reader view")
+
             Button { renderMarkdownAsPDF() } label: {
                 if isRenderingMarkdownPDF {
                     ProgressView().controlSize(.small)

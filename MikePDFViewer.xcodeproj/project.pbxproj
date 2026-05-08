@@ -44,6 +44,8 @@
 		AA000209 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000309 /* MarkdownView.swift */; };
 		AA00020A /* MarkdownToPDFConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030A /* MarkdownToPDFConverter.swift */; };
 		AA00020B /* OpenWithMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030B /* OpenWithMenu.swift */; };
+		AA00020C /* MarkdownToHTML.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030C /* MarkdownToHTML.swift */; };
+		AA00020D /* MarkdownReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030D /* MarkdownReaderView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -87,6 +89,8 @@
 		AA000309 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		AA00030A /* MarkdownToPDFConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownToPDFConverter.swift; sourceTree = "<group>"; };
 		AA00030B /* OpenWithMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenWithMenu.swift; sourceTree = "<group>"; };
+		AA00030C /* MarkdownToHTML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownToHTML.swift; sourceTree = "<group>"; };
+		AA00030D /* MarkdownReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -150,6 +154,8 @@
 				AA000309 /* MarkdownView.swift */,
 				AA00030A /* MarkdownToPDFConverter.swift */,
 				AA00030B /* OpenWithMenu.swift */,
+				AA00030C /* MarkdownToHTML.swift */,
+				AA00030D /* MarkdownReaderView.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -267,6 +273,8 @@
 				AA000209 /* MarkdownView.swift in Sources */,
 				AA00020A /* MarkdownToPDFConverter.swift in Sources */,
 				AA00020B /* OpenWithMenu.swift in Sources */,
+				AA00020C /* MarkdownToHTML.swift in Sources */,
+				AA00020D /* MarkdownReaderView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -409,7 +417,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.8.4;
+				MARKETING_VERSION = 5.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -437,7 +445,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.8.4;
+				MARKETING_VERSION = 5.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
