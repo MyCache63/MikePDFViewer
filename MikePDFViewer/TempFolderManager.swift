@@ -1,26 +1,41 @@
 import Foundation
 
-/// Owns ~/Documents/MikePDFViewer/tmp/ — the staging area for rendered MD/DOCX→PDF
-/// output. Files older than 7 days are purged on app launch.
-enum TempFolderManager {
+/// Owns the base directory used to stage rendered PDFs from MD/DOCX/EML
+/// conversions. Files older than `maxAgeDays` are purged on app launch.
+///
+/// Host apps can override `baseDirectory` to point the kit at their own
+/// scratch area. The standalone MikePDFViewer.app sets this to its
+/// container Documents/MikePDFViewer/tmp/; embedding hosts (e.g. Mission
+/// Control) can leave the default `NSTemporaryDirectory/MikePDFViewerKit/`
+/// or point it elsewhere.
+public enum TempFolderManager {
 
-    static let folderName = "MikePDFViewer"
-    static let tmpSubfolder = "tmp"
-    static let maxAgeSeconds: TimeInterval = 7 * 24 * 60 * 60  // 7 days
+    /// Days to retain a file in the temp folder before automatic purge.
+    public static var maxAgeDays: Int = 7
 
-    /// Path to the temp folder, creating it if needed.
-    static var tmpFolder: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let folder = docs.appendingPathComponent(folderName).appendingPathComponent(tmpSubfolder)
-        if !FileManager.default.fileExists(atPath: folder.path) {
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    /// Base directory for rendered temp PDFs. Default is the system temp
+    /// directory plus a "MikePDFViewerKit" subfolder so hosts that don't
+    /// configure anything still get a tidy location.
+    public static var baseDirectory: URL = {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("MikePDFViewerKit", isDirectory: true)
+    }()
+
+    /// Resolved temp folder, creating it on demand.
+    public static var tmpFolder: URL {
+        if !FileManager.default.fileExists(atPath: baseDirectory.path) {
+            try? FileManager.default.createDirectory(
+                at: baseDirectory,
+                withIntermediateDirectories: true
+            )
         }
-        return folder
+        return baseDirectory
     }
 
-    /// Build a unique destination URL for a rendered PDF based on the source filename.
-    /// Format: <basename>_<yyyyMMdd-HHmmss>.pdf, with collision suffix if needed.
-    static func destinationURL(for sourceURL: URL, ext: String = "pdf") -> URL {
+    /// Build a unique destination URL for a rendered file based on the source
+    /// filename. Format: `<basename>_<yyyyMMdd-HHmmss>.<ext>` with a counter
+    /// suffix if needed to avoid collisions.
+    public static func destinationURL(for sourceURL: URL, ext: String = "pdf") -> URL {
         let base = sourceURL.deletingPathExtension().lastPathComponent
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
@@ -36,14 +51,14 @@ enum TempFolderManager {
     }
 
     /// Write data to a fresh temp URL and return the URL.
-    static func writeToTemp(data: Data, sourceURL: URL, ext: String = "pdf") throws -> URL {
+    public static func writeToTemp(data: Data, sourceURL: URL, ext: String = "pdf") throws -> URL {
         let dest = destinationURL(for: sourceURL, ext: ext)
         try data.write(to: dest)
         return dest
     }
 
-    /// Delete files in tmp older than `maxAgeSeconds`. Safe to call repeatedly.
-    static func purgeOldFiles() {
+    /// Delete files in the temp folder older than `maxAgeDays`. Safe to call repeatedly.
+    public static func purgeOldFiles() {
         let folder = tmpFolder
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: folder,
@@ -51,7 +66,7 @@ enum TempFolderManager {
             options: [.skipsHiddenFiles]
         ) else { return }
 
-        let cutoff = Date().addingTimeInterval(-maxAgeSeconds)
+        let cutoff = Date().addingTimeInterval(-Double(maxAgeDays) * 86_400)
         for url in contents {
             guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
                   let modified = values.contentModificationDate else { continue }
@@ -62,7 +77,7 @@ enum TempFolderManager {
     }
 
     /// Manually clear all files in the temp folder.
-    static func clearAll() {
+    public static func clearAll() {
         let folder = tmpFolder
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: folder,

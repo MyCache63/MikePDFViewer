@@ -50,7 +50,15 @@ struct MikePDFViewerApp: App {
     @FocusedValue(\.displayModeRawValue) var displayModeRaw
 
     init() {
-        // Purge any temp PDFs older than 7 days at app launch.
+        // Standalone app uses ~/Documents/MikePDFViewer/tmp (sandboxing maps
+        // this to the container). The kit's default for embedding hosts is
+        // NSTemporaryDirectory/MikePDFViewerKit/. Set the standalone path
+        // here so behavior matches v5.x for users who already have files
+        // staged in the container Documents folder.
+        TempFolderManager.baseDirectory = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("MikePDFViewer", isDirectory: true)
+            .appendingPathComponent("tmp", isDirectory: true)
         TempFolderManager.purgeOldFiles()
     }
 

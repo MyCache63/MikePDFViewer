@@ -1,10 +1,48 @@
-# MikePDFViewer Handover — May 8, 2026
+# MikePDFViewer Handover — May 10, 2026
 
-## Current State: v5.9.0 — v6 Reader MVP (Phases 1 + 2) Live
+## Current State: v6.0.0 — Swift Package + Embedded Viewer + Multi-Theme Reader
 
-**BUILD STATUS:** v5.9.0 builds, installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v6.0.0 builds (both `swift build` and Xcode), installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
 **Safety tags:** `before-md-reader-may8` (v5.9.0 starting point), `before-md-docx-may4`, `before-md-render-fix-may4`, `before-eml-support-apr30`
+
+### v6.0.0 — Two big changes for one release
+
+**1. The viewer is now also a Swift Package.** Per the design at `/Users/michaelashe/Projects/ClaudeProjectBrowserV3/MissionControlEmbeddedViewerDesignAndPlan_v01_May10.md`, the kit's reusable rendering core is exposed as `MikePDFViewerKit` (defined in `Package.swift` at the repo root). Mission Control or any other host app can `import MikePDFViewerKit` and use:
+- `EmbeddedDocumentView(fileURL:markdownTheme:)` — read-only SwiftUI view that opens .pdf, .md, .markdown, .docx, .eml.
+- `MarkdownReaderView(source:baseURL:theme:)` — the WKWebView-based reader, exposed directly for hosts that want more control.
+- `MarkdownReaderTheme` — six built-in themes (github, newsprint, sepia, dark, highContrast, mono).
+- `TempFolderManager.baseDirectory` — host-overridable scratch path. Default for the kit is `NSTemporaryDirectory/MikePDFViewerKit/`; the standalone app overrides to `~/Documents/MikePDFViewer/tmp/` (sandbox redirects to container Documents).
+- `DOCXToPDFConverter.convert(url:)`, `EMLToPDFConverter.convert(url:)`, `HTMLToPDFRenderer.render(html:)` — for hosts that want lower-level access.
+
+**Embedding contract** (kept by `EmbeddedDocumentView`): no `NotificationCenter.default.post`, no `FocusedValue`, no menu commands, no file picker, no window-level state. Two instances in the same host process are guaranteed not to interfere with each other.
+
+The standalone `MikePDFViewer.app` continues to work unchanged. Source lives in one tree (`MikePDFViewer/`); SwiftPM excludes the app-only files (ContentView, MikePDFViewerApp, annotations, OCR, signatures, redaction, etc.).
+
+**2. Phase 3 of the v6 plan: multi-theme reader.** The toolbar now has a paint-palette icon (visible while viewing a .md in Reader mode) that opens a theme picker:
+- **GitHub** — default. Follows system light/dark.
+- **Newsprint** — serif (Iowan Old Style), narrow column, warm paper background.
+- **Sepia** — warm e-reader feel.
+- **Dark** — always dark.
+- **High Contrast** — pure black on white, larger spacing.
+- **Mono** — monospace everywhere, iA-Writer-style.
+
+Selection persists across launches (`@AppStorage("markdown-theme")`).
+
+### v6 plan phases status (`MikePDFViewer_AddMDReader_Plan_v01_May8.md`)
+- ☑ Phase 1 — Refactor to MarkdownToHTML
+- ☑ Phase 2 — WKWebView reader with default theme
+- ☑ Phase 3 — Theme switcher (6 themes via UserDefaults)
+- ☐ Phase 4 — Typography controls (font/size/spacing/width)
+- ☐ Phase 5 — Focus mode
+- ☐ Phase 6 — TOC sidebar + reading stats
+- ☐ Phase 7 — Theme-aware Render-as-PDF
+- ☐ Phase 8 — Polish & device test
+
+### v5.9.0 — v6 Reader MVP (Phases 1 + 2 of v6 plan)
+- **Phase 1 refactor:** Extracted markdown→HTML emitter into a shared `MarkdownToHTML.swift`. Used by both `MarkdownToPDFConverter` (Render-as-PDF) and the new `MarkdownReaderView`.
+- **Phase 2 Reader view:** New `MarkdownReaderView` built on WKWebView with a bundled GitHub-style CSS theme. Honors `prefers-color-scheme` so it picks light/dark from system automatically.
+- **Mode toggle:** New toolbar button (book icon → Reader, doc.plaintext icon → Quick) lets you flip between the new Reader and the legacy NSTextView Quick view. Default is Reader.
 
 ### v5.9.0 — v6 Reader MVP (Phases 1 + 2 of v6 plan)
 - **Phase 1 refactor:** Extracted markdown→HTML emitter into a shared `MarkdownToHTML.swift`. Used by both `MarkdownToPDFConverter` (Render-as-PDF) and the new `MarkdownReaderView`.

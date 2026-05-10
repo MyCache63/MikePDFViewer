@@ -3,16 +3,16 @@ import WebKit
 import AppKit
 
 @MainActor
-final class HTMLToPDFRenderer: NSObject, WKNavigationDelegate {
+public final class HTMLToPDFRenderer: NSObject, WKNavigationDelegate {
 
-    enum RenderError: Error {
+    public enum RenderError: Error {
         case htmlLoadFailed
         case pdfGenerationFailed
     }
 
     /// Render an HTML string to PDF data using WKWebView.
     /// `loadExternalImages`: when false, http(s) requests after the initial loadHTMLString are blocked.
-    static func render(html: String, loadExternalImages: Bool = false) async throws -> Data {
+    public static func render(html: String, loadExternalImages: Bool = false) async throws -> Data {
         let renderer = HTMLToPDFRenderer(loadExternalImages: loadExternalImages)
         return try await renderer.run(html: html)
     }
@@ -42,7 +42,7 @@ final class HTMLToPDFRenderer: NSObject, WKNavigationDelegate {
         }
     }
 
-    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    nonisolated public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 200_000_000)
             let config = WKPDFConfiguration()
@@ -62,21 +62,21 @@ final class HTMLToPDFRenderer: NSObject, WKNavigationDelegate {
         }
     }
 
-    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    nonisolated public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             self.continuation?.resume(throwing: error)
             self.continuation = nil
         }
     }
 
-    nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    nonisolated public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             self.continuation?.resume(throwing: error)
             self.continuation = nil
         }
     }
 
-    nonisolated func webView(_ webView: WKWebView,
+    nonisolated public func webView(_ webView: WKWebView,
                              decidePolicyFor navigationAction: WKNavigationAction,
                              decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         Task { @MainActor in

@@ -3,16 +3,26 @@ import PDFKit
 import AppKit
 
 @MainActor
-final class EMLToPDFConverter: NSObject {
+public final class EMLToPDFConverter: NSObject {
 
-    enum ConversionError: Error {
+    public enum ConversionError: Error {
         case htmlBuildFailed
         case pdfRenderFailed
         case parsedDocumentInvalid
     }
 
+    /// Convenience: read an .eml file from disk, parse it, and render to PDF.
+    public static func convert(url: URL, loadExternalImages: Bool = false) async throws -> PDFDocument {
+        let data = try Data(contentsOf: url)
+        let message = try EMLParser.parse(data: data)
+        return try await convert(message, loadExternalImages: loadExternalImages)
+    }
+
     /// Convert a parsed EML message into a PDFDocument.
     /// `loadExternalImages`: if false, remote <img src=http...> tags are stripped before rendering.
+    /// Internal — the public API is the URL-based overload above. Exposing
+    /// EMLMessage publicly would require flagging the entire EML model as
+    /// public, which we don't need for the embedding use case.
     static func convert(_ message: EMLMessage, loadExternalImages: Bool = false) async throws -> PDFDocument {
         let html = buildHTML(from: message, loadExternalImages: loadExternalImages)
         let pdfData = try await renderHTMLToPDF(html: html, loadExternalImages: loadExternalImages)

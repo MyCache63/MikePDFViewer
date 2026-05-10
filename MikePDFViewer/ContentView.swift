@@ -58,6 +58,10 @@ struct ContentView: View {
     @State private var isViewingMarkdown: Bool = false
     @State private var originalMarkdownURL: URL?
     @State private var markdownMode: MarkdownMode = .reader
+    @AppStorage("markdown-theme") private var markdownThemeRaw: String = MarkdownReaderTheme.github.rawValue
+    private var markdownTheme: MarkdownReaderTheme {
+        MarkdownReaderTheme(rawValue: markdownThemeRaw) ?? .github
+    }
     @State private var isRenderingMarkdownPDF: Bool = false
     @State private var renderedPDFTempURL: URL?
     @State private var pendingRenderedSourceURL: URL?
@@ -334,7 +338,7 @@ struct ContentView: View {
         if isViewingMarkdown, let doc = markdownDocument {
             switch markdownMode {
             case .reader:
-                MarkdownReaderView(source: doc.source, baseURL: originalMarkdownURL)
+                MarkdownReaderView(source: doc.source, baseURL: originalMarkdownURL, theme: markdownTheme)
             case .quick:
                 if let attr = markdownAttributed {
                     MarkdownView(attributedString: attr, anchors: markdownAnchors)
@@ -428,6 +432,26 @@ struct ContentView: View {
                 Image(systemName: markdownMode == .reader ? "book" : "doc.plaintext")
             }
             .help(markdownMode == .reader ? "Switch to Quick view" : "Switch to Reader view")
+
+            if markdownMode == .reader {
+                Menu {
+                    ForEach(MarkdownReaderTheme.allCases) { theme in
+                        Button {
+                            markdownThemeRaw = theme.rawValue
+                        } label: {
+                            HStack {
+                                Text(theme.displayName)
+                                if theme == markdownTheme {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "paintpalette")
+                }
+                .help("Reading Theme — \(markdownTheme.displayName)")
+            }
 
             Button { renderMarkdownAsPDF() } label: {
                 if isRenderingMarkdownPDF {

@@ -3,9 +3,9 @@ import AppKit
 import PDFKit
 
 @MainActor
-final class DOCXToPDFConverter {
+public final class DOCXToPDFConverter {
 
-    enum ConversionError: Error {
+    public enum ConversionError: Error {
         case docxReadFailed
         case htmlConversionFailed
         case pdfRenderFailed
@@ -15,7 +15,7 @@ final class DOCXToPDFConverter {
     /// Convert a .docx file to a PDFDocument.
     /// Strategy: NSAttributedString reads .docx → convert to HTML → render via shared HTMLToPDFRenderer.
     /// Side effect: also writes the rendered PDF to TempFolderManager.tmpFolder for save-as flows.
-    static func convert(url: URL) async throws -> (document: PDFDocument, tempPDFURL: URL) {
+    public static func convert(url: URL) async throws -> (document: PDFDocument, tempPDFURL: URL) {
         let attrStr: NSAttributedString
         do {
             attrStr = try NSAttributedString(
