@@ -28,11 +28,25 @@ public struct MarkdownReaderView: NSViewRepresentable {
     public let source: String
     public let baseURL: URL?
     public let theme: MarkdownReaderTheme
+    public let typography: MarkdownTypography
+    public let focusMode: Bool
+    /// One-shot scroll request: when non-nil and different from the previously
+    /// observed value, the view scrolls to that anchor slug then nothing more.
+    /// Hosts can leave this as `.constant(nil)` if they don't need anchor jumps.
+    public var pendingScrollAnchor: Binding<String?>
 
-    public init(source: String, baseURL: URL?, theme: MarkdownReaderTheme = .github) {
+    public init(source: String,
+                baseURL: URL?,
+                theme: MarkdownReaderTheme = .github,
+                typography: MarkdownTypography = .default,
+                focusMode: Bool = false,
+                pendingScrollAnchor: Binding<String?> = .constant(nil)) {
         self.source = source
         self.baseURL = baseURL
         self.theme = theme
+        self.typography = typography
+        self.focusMode = focusMode
+        self.pendingScrollAnchor = pendingScrollAnchor
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -42,7 +56,10 @@ public struct MarkdownReaderView: NSViewRepresentable {
     public func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let prefs = WKWebpagePreferences()
-        prefs.allowsContentJavaScript = false
+        // JavaScript is needed for focus-mode scroll detection. The HTML we
+        // generate doesn't carry user-supplied scripts (MarkdownToHTML strips
+        // raw HTML during emission), so this is safe.
+        prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -54,8 +71,22 @@ public struct MarkdownReaderView: NSViewRepresentable {
 
     public func updateNSView(_ webView: WKWebView, context: Context) {
         if context.coordinator.lastRenderedSource != source
-            || context.coordinator.lastTheme != theme {
+            || context.coordinator.lastTheme != theme
+            || context.coordinator.lastTypography != typography
+            || context.coordinator.lastFocusMode != focusMode {
             loadContent(into: webView)
+        }
+        // Anchor jumps are one-shot side effects: when the binding flips to a
+        // non-nil slug, scroll there and reset to nil so the same slug can be
+        // requested again later.
+        if let anchor = pendingScrollAnchor.wrappedValue,
+           anchor != context.coordinator.lastJumpedAnchor {
+            let escaped = anchor.replacingOccurrences(of: "'", with: "\\'")
+            webView.evaluateJavaScript("location.hash = '#\(escaped)'", completionHandler: nil)
+            context.coordinator.lastJumpedAnchor = anchor
+            DispatchQueue.main.async {
+                pendingScrollAnchor.wrappedValue = nil
+            }
         }
     }
 
@@ -63,11 +94,15 @@ public struct MarkdownReaderView: NSViewRepresentable {
         let body = MarkdownToHTML.renderHTML(source)
         let html = MarkdownReaderThemeBundle.html(body: body,
                                                    title: baseURL?.lastPathComponent ?? "Markdown",
-                                                   theme: theme)
+                                                   theme: theme,
+                                                   typography: typography,
+                                                   focusMode: focusMode)
         webView.loadHTMLString(html, baseURL: nil)
         if let coord = webView.navigationDelegate as? Coordinator {
             coord.lastRenderedSource = source
             coord.lastTheme = theme
+            coord.lastTypography = typography
+            coord.lastFocusMode = focusMode
         }
     }
 
@@ -77,6 +112,9 @@ public struct MarkdownReaderView: NSViewRepresentable {
     public final class Coordinator: NSObject, WKNavigationDelegate {
         var lastRenderedSource: String = ""
         var lastTheme: MarkdownReaderTheme = .github
+        var lastTypography: MarkdownTypography = .default
+        var lastFocusMode: Bool = false
+        var lastJumpedAnchor: String? = nil
 
         public func webView(_ webView: WKWebView,
                             decidePolicyFor navigationAction: WKNavigationAction,
@@ -147,7 +185,13 @@ public enum MarkdownReaderTheme: String, CaseIterable, Identifiable, Sendable {
 /// don't require parsing changes.
 enum MarkdownReaderThemeBundle {
 
-    static func html(body: String, title: String, theme: MarkdownReaderTheme) -> String {
+    static func html(body: String,
+                     title: String,
+                     theme: MarkdownReaderTheme,
+                     typography: MarkdownTypography = .default,
+                     focusMode: Bool = false) -> String {
+        let bodyClass = focusMode ? "focus-mode" : ""
+        let focusJS = focusMode ? Self.focusModeScript : ""
         return """
         <!DOCTYPE html>
         <html>
@@ -156,15 +200,80 @@ enum MarkdownReaderThemeBundle {
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>\(MarkdownToHTML.htmlEscape(title))</title>
             <style>\(css(for: theme))</style>
+            <style>\(typography.cssOverrides)</style>
+            <style>\(focusModeCSS)</style>
         </head>
-        <body>
+        <body class="\(bodyClass)">
             <article class="markdown-body">
         \(body)
             </article>
+            \(focusJS)
         </body>
         </html>
         """
     }
+
+    /// CSS rules that apply when `<body>` has the `focus-mode` class. Dims
+    /// every block-level element except the one tagged `.md-focused` (which
+    /// the JS adds to whichever block is nearest the viewport center).
+    private static let focusModeCSS: String = """
+    body.focus-mode .markdown-body p,
+    body.focus-mode .markdown-body li,
+    body.focus-mode .markdown-body blockquote,
+    body.focus-mode .markdown-body pre,
+    body.focus-mode .markdown-body table,
+    body.focus-mode .markdown-body h1,
+    body.focus-mode .markdown-body h2,
+    body.focus-mode .markdown-body h3,
+    body.focus-mode .markdown-body h4,
+    body.focus-mode .markdown-body h5,
+    body.focus-mode .markdown-body h6 {
+        opacity: 0.25;
+        transition: opacity 0.18s ease;
+    }
+    body.focus-mode .markdown-body .md-focused {
+        opacity: 1.0;
+    }
+    """
+
+    /// Tracks the block-level element nearest the viewport center on scroll
+    /// and toggles a `.md-focused` class. Throttled via requestAnimationFrame.
+    private static let focusModeScript: String = """
+    <script>
+    (function() {
+        const blocks = document.querySelectorAll('.markdown-body > *');
+        let current = null;
+        function update() {
+            const center = window.innerHeight / 2;
+            let nearest = null;
+            let nearestDist = Infinity;
+            for (const b of blocks) {
+                const rect = b.getBoundingClientRect();
+                const blockCenter = rect.top + rect.height / 2;
+                const dist = Math.abs(blockCenter - center);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = b;
+                }
+            }
+            if (nearest !== current) {
+                if (current) current.classList.remove('md-focused');
+                if (nearest) nearest.classList.add('md-focused');
+                current = nearest;
+            }
+        }
+        let pending = false;
+        document.addEventListener('scroll', () => {
+            if (!pending) {
+                pending = true;
+                requestAnimationFrame(() => { update(); pending = false; });
+            }
+        }, { passive: true });
+        // Initial pass so something is bright before the user scrolls.
+        update();
+    })();
+    </script>
+    """
 
     private static func css(for theme: MarkdownReaderTheme) -> String {
         switch theme {

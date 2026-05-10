@@ -1,10 +1,54 @@
 # MikePDFViewer Handover — May 10, 2026
 
-## Current State: v6.0.0 — Swift Package + Embedded Viewer + Multi-Theme Reader
+## Current State: v6.1.0 — Full v6 Reader (Phases 1-8 complete)
 
-**BUILD STATUS:** v6.0.0 builds (both `swift build` and Xcode), installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v6.1.0 builds (both `swift build` and Xcode), installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Safety tags:** `before-md-reader-may8` (v5.9.0 starting point), `before-md-docx-may4`, `before-md-render-fix-may4`, `before-eml-support-apr30`
+**Safety tags:** `before-md-phases-4-8-may10` (v6.1.0 starting point), `before-md-reader-may8` (v5.9.0), `before-md-docx-may4`, `before-md-render-fix-may4`, `before-eml-support-apr30`
+
+### v6.1.0 — Phases 4-8 of v6 plan complete
+
+**Phase 4 — Typography controls.** Five orthogonal settings, all persisted via `@AppStorage`:
+- Font family — System / Serif / Monospace / Quattro (iA-Writer-style)
+- Font size — 11pt to 22pt slider
+- Line spacing — 1.30 to 2.00 slider
+- Content width — Narrow / Standard / Wide / Full Width segmented
+- Paragraph gap — Tight / Normal / Loose segmented
+A `textformat.size` toolbar button (visible while viewing .md in Reader mode) opens a popover with all controls plus a focus mode toggle and "Reset to Defaults" button.
+
+**Phase 5 — Focus mode.** Same popover toggles focus mode. When on, every block-level element except the one nearest the viewport center dims to 25% opacity. Implemented via a tiny inline JS scroll observer that adds `.md-focused` class on rAF. Persisted via `@AppStorage("markdown-focus-mode")`.
+
+**Phase 6 — TOC sidebar + reading stats.** New `MarkdownTOCSidebar` replaces the placeholder sidebar when viewing a .md in Reader mode. Shows:
+- Word count
+- Estimated reading time (220 wpm)
+- Heading count
+- Flat indented list of all headings, click any to jump (uses a `pendingScrollAnchor` binding that triggers `webView.evaluateJavaScript("location.hash = '#slug'")`)
+A `list.bullet.indent`/`list.bullet` toolbar toggle hides/shows the TOC. State persisted via `@AppStorage("markdown-toc-visible")`.
+
+**Phase 7 — Theme-aware Render-as-PDF.** `MarkdownToPDFConverter.convert(source:sourceURL:theme:typography:)` now accepts the user's current theme + typography and bakes them into the rendered PDF — exported PDFs match what's on screen.
+
+**Phase 8 — Polish & version bump.** v5.9.0 → v6.0.0 → v6.1.0. Both `swift build` (kit) and `xcodebuild` (app) compile clean.
+
+### v6 plan phase status (`MikePDFViewer_AddMDReader_Plan_v01_May8.md`)
+- ☑ Phase 1 — Refactor to MarkdownToHTML
+- ☑ Phase 2 — WKWebView reader with default theme
+- ☑ Phase 3 — Theme switcher (6 themes via UserDefaults)
+- ☑ Phase 4 — Typography controls
+- ☑ Phase 5 — Focus mode
+- ☑ Phase 6 — TOC sidebar + reading stats
+- ☑ Phase 7 — Theme-aware Render-as-PDF
+- ☑ Phase 8 — Polish, version bump, install
+
+### Public Kit API (v6.1.0)
+For `import MikePDFViewerKit`:
+- `EmbeddedDocumentView(fileURL:markdownTheme:)` — read-only host-embeddable view (PDF/MD/DOCX/EML)
+- `MarkdownReaderView(source:baseURL:theme:typography:focusMode:pendingScrollAnchor:)`
+- `MarkdownReaderTheme` (.github / .newsprint / .sepia / .dark / .highContrast / .mono)
+- `MarkdownTypography` + nested `FontFamily`, `ContentWidth`, `ParagraphSpacing` enums
+- `TempFolderManager.baseDirectory` — host-overridable
+- `DOCXToPDFConverter.convert(url:)`, `EMLToPDFConverter.convert(url:)`, `HTMLToPDFRenderer.render(html:loadExternalImages:)`
+- `MarkdownToPDFConverter.convert(source:sourceURL:theme:typography:)`
+- `MarkdownToHTML.render(_:) -> (html, [TOCEntry])` for hosts that want their own TOC UI
 
 ### v6.0.0 — Two big changes for one release
 

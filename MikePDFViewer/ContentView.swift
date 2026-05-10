@@ -59,9 +59,42 @@ struct ContentView: View {
     @State private var originalMarkdownURL: URL?
     @State private var markdownMode: MarkdownMode = .reader
     @AppStorage("markdown-theme") private var markdownThemeRaw: String = MarkdownReaderTheme.github.rawValue
+    @AppStorage("markdown-font-family") private var mdFontFamilyRaw: String = MarkdownTypography.FontFamily.system.rawValue
+    @AppStorage("markdown-font-size") private var mdFontSize: Int = 16
+    @AppStorage("markdown-line-height") private var mdLineHeight: Double = 1.6
+    @AppStorage("markdown-content-width") private var mdContentWidthRaw: String = MarkdownTypography.ContentWidth.standard.rawValue
+    @AppStorage("markdown-para-spacing") private var mdParaSpacingRaw: String = MarkdownTypography.ParagraphSpacing.normal.rawValue
+    @AppStorage("markdown-focus-mode") private var mdFocusMode: Bool = false
+    @State private var showMarkdownSettings: Bool = false
+    @State private var markdownTOC: [MarkdownToHTML.TOCEntry] = []
+    @State private var markdownStats: ReadingStats = .empty
+    @State private var pendingMDAnchor: String? = nil
+    @AppStorage("markdown-toc-visible") private var mdTOCVisible: Bool = true
+
     private var markdownTheme: MarkdownReaderTheme {
         MarkdownReaderTheme(rawValue: markdownThemeRaw) ?? .github
     }
+    private var markdownTypographyBinding: Binding<MarkdownTypography> {
+        Binding(
+            get: {
+                MarkdownTypography(
+                    fontFamily: MarkdownTypography.FontFamily(rawValue: mdFontFamilyRaw) ?? .system,
+                    fontSize: mdFontSize,
+                    lineHeight: mdLineHeight,
+                    contentWidth: MarkdownTypography.ContentWidth(rawValue: mdContentWidthRaw) ?? .standard,
+                    paragraphSpacing: MarkdownTypography.ParagraphSpacing(rawValue: mdParaSpacingRaw) ?? .normal
+                )
+            },
+            set: { newValue in
+                mdFontFamilyRaw = newValue.fontFamily.rawValue
+                mdFontSize = newValue.fontSize
+                mdLineHeight = newValue.lineHeight
+                mdContentWidthRaw = newValue.contentWidth.rawValue
+                mdParaSpacingRaw = newValue.paragraphSpacing.rawValue
+            }
+        )
+    }
+    private var markdownTypography: MarkdownTypography { markdownTypographyBinding.wrappedValue }
     @State private var isRenderingMarkdownPDF: Bool = false
     @State private var renderedPDFTempURL: URL?
     @State private var pendingRenderedSourceURL: URL?
@@ -284,21 +317,34 @@ struct ContentView: View {
                 }
             )
         } else if isViewingMarkdown {
-            VStack {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.secondary)
-                Text("Markdown")
-                    .foregroundStyle(.secondary)
-                if let url = originalMarkdownURL {
-                    Text(url.lastPathComponent)
+            if markdownMode == .reader && mdTOCVisible {
+                MarkdownTOCSidebar(
+                    entries: markdownTOC,
+                    stats: markdownStats,
+                    onJump: { slug in pendingMDAnchor = slug }
+                )
+            } else {
+                VStack {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    Text(markdownStats.readingTimeText)
                         .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(markdownStats.wordCount) words")
+                        .font(.caption2)
                         .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8)
+                    if let url = originalMarkdownURL {
+                        Text(url.lastPathComponent)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 4)
+                    }
                 }
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
         } else {
             VStack {
                 Text("No PDF Open")
@@ -338,7 +384,12 @@ struct ContentView: View {
         if isViewingMarkdown, let doc = markdownDocument {
             switch markdownMode {
             case .reader:
-                MarkdownReaderView(source: doc.source, baseURL: originalMarkdownURL, theme: markdownTheme)
+                MarkdownReaderView(source: doc.source,
+                                   baseURL: originalMarkdownURL,
+                                   theme: markdownTheme,
+                                   typography: markdownTypography,
+                                   focusMode: mdFocusMode,
+                                   pendingScrollAnchor: $pendingMDAnchor)
             case .quick:
                 if let attr = markdownAttributed {
                     MarkdownView(attributedString: attr, anchors: markdownAnchors)
@@ -451,6 +502,22 @@ struct ContentView: View {
                     Image(systemName: "paintpalette")
                 }
                 .help("Reading Theme — \(markdownTheme.displayName)")
+
+                Button { showMarkdownSettings.toggle() } label: {
+                    Image(systemName: "textformat.size")
+                }
+                .help("Typography & Focus Mode")
+                .popover(isPresented: $showMarkdownSettings, arrowEdge: .bottom) {
+                    MarkdownReaderSettings(
+                        typography: markdownTypographyBinding,
+                        focusMode: $mdFocusMode
+                    )
+                }
+
+                Button { mdTOCVisible.toggle() } label: {
+                    Image(systemName: mdTOCVisible ? "list.bullet.indent" : "list.bullet")
+                }
+                .help(mdTOCVisible ? "Hide Table of Contents" : "Show Table of Contents")
             }
 
             Button { renderMarkdownAsPDF() } label: {
@@ -906,6 +973,8 @@ struct ContentView: View {
             markdownDocument = nil
             markdownAttributed = nil
             markdownAnchors = [:]
+            markdownTOC = []
+            markdownStats = .empty
             return
         }
         switch url.pathExtension.lowercased() {
@@ -925,7 +994,12 @@ struct ContentView: View {
         isRenderingMarkdownPDF = true
         Task {
             do {
-                let (pdfDoc, tempURL) = try await MarkdownToPDFConverter.convert(source: doc.source, sourceURL: url)
+                let (pdfDoc, tempURL) = try await MarkdownToPDFConverter.convert(
+                    source: doc.source,
+                    sourceURL: url,
+                    theme: markdownTheme,
+                    typography: markdownTypography
+                )
                 await MainActor.run {
                     pdfDocument = pdfDoc
                     totalPages = pdfDoc.pageCount
@@ -976,6 +1050,9 @@ struct ContentView: View {
         do {
             let doc = try MarkdownDocument(url: url)
             let (styled, anchors) = doc.styledAttributedStringWithAnchors()
+            let (_, toc) = MarkdownToHTML.render(doc.source)
+            markdownTOC = toc
+            markdownStats = ReadingStats(source: doc.source)
             pdfDocument = nil
             totalPages = 0
             currentPage = 0
@@ -999,6 +1076,8 @@ struct ContentView: View {
             markdownDocument = nil
             markdownAttributed = nil
             markdownAnchors = [:]
+            markdownTOC = []
+            markdownStats = .empty
         }
     }
 

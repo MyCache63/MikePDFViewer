@@ -48,6 +48,9 @@ let package = Package(
                 "ThumbnailSidebar.swift",
                 "WatermarkService.swift",
                 "WatermarkSheet.swift",
+                // App-only UI plumbing
+                "MarkdownReaderSettings.swift",
+                "MarkdownTOCSidebar.swift",
                 // App resources (handled by Xcode app target, not SwiftPM)
                 "Assets.xcassets",
                 "AppIcon.icns",
