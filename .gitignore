@@ -15,3 +15,8 @@ ocr_comparison/
 # Word lockfiles
 ~$*.docx
 ~$*.doc
+
+# SwiftPM build outputs
+.build/
+.swiftpm/
+Package.resolved
