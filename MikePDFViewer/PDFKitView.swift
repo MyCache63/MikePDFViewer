@@ -25,6 +25,10 @@ extension Notification.Name {
     static let pdfApplySignature = Notification.Name("pdfApplySignature")
     static let pdfRedactSelection = Notification.Name("pdfRedactSelection")
     static let pdfPrint = Notification.Name("pdfPrint")
+    // Find — used by Edit menu items (Find…, Find Next, Find Previous)
+    static let pdfShowFind = Notification.Name("pdfShowFind")
+    static let pdfFindNext = Notification.Name("pdfFindNext")
+    static let pdfFindPrev = Notification.Name("pdfFindPrev")
     // Posted when annotation editing mode changes
     // userInfo: ["editing": Bool, "type": String, "text": String]
     static let pdfAnnotationEditingChanged = Notification.Name("pdfAnnotationEditingChanged")

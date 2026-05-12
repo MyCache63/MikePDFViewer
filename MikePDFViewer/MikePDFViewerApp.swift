@@ -148,6 +148,28 @@ struct MikePDFViewerApp: App {
                 .disabled(focusedDocument == nil)
             }
 
+            // MARK: Find Menu (Edit → Find ▸ Find…)
+            // Lives in its own CommandGroup so it surfaces in the Edit menu
+            // and registers Cmd+F as a real menu shortcut (the prior
+            // implementation relied on a hidden NSView keyDown override,
+            // which broke when the WKWebView/NSTextView grabbed focus).
+            CommandGroup(after: .textEditing) {
+                Button("Find…") {
+                    NotificationCenter.default.post(name: .pdfShowFind, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
+                Button("Find Next") {
+                    NotificationCenter.default.post(name: .pdfFindNext, object: nil)
+                }
+                .keyboardShortcut("g", modifiers: .command)
+
+                Button("Find Previous") {
+                    NotificationCenter.default.post(name: .pdfFindPrev, object: nil)
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
+
             // MARK: Print
             CommandGroup(replacing: .printItem) {
                 Button("Print...") {

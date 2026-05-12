@@ -246,9 +246,36 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
                 if pdfDocument != nil { showPresentation = true }
             }
+            .modifier(FindCommandsListener(
+                onShowFind: { handleShowFindCommand() },
+                onFindNext: { handleFindNextCommand() },
+                onFindPrev: { handleFindPrevCommand() }
+            ))
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
             .onAppear { loadDocument(from: pdfURL) }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
+    }
+
+    private func handleShowFindCommand() {
+        if pdfDocument != nil || isViewingMarkdown {
+            showSearch.toggle()
+            if !showSearch {
+                searchText = ""
+                mdSearch.clear()
+            }
+        }
+    }
+
+    private func handleFindNextCommand() {
+        if isViewingMarkdown && markdownMode == .reader {
+            mdSearch.findNext()
+        }
+    }
+
+    private func handleFindPrevCommand() {
+        if isViewingMarkdown && markdownMode == .reader {
+            mdSearch.findPrev()
+        }
     }
 
     private var viewWithAlerts: some View {
@@ -383,22 +410,27 @@ struct ContentView: View {
     @ViewBuilder
     private var pdfContentWithEMLSidebar: some View {
         if isViewingMarkdown, let doc = markdownDocument {
-            switch markdownMode {
-            case .reader:
-                MarkdownReaderView(source: doc.source,
-                                   baseURL: originalMarkdownURL,
-                                   theme: markdownTheme,
-                                   typography: markdownTypography,
-                                   focusMode: mdFocusMode,
-                                   pendingScrollAnchor: $pendingMDAnchor,
-                                   searchController: mdSearch)
-            case .quick:
-                if let attr = markdownAttributed {
-                    MarkdownView(attributedString: attr,
-                                 anchors: markdownAnchors,
-                                 liveSearchText: $searchText)
-                } else {
-                    Text("Loading…").foregroundStyle(.secondary)
+            ZStack {
+                switch markdownMode {
+                case .reader:
+                    MarkdownReaderView(source: doc.source,
+                                       baseURL: originalMarkdownURL,
+                                       theme: markdownTheme,
+                                       typography: markdownTypography,
+                                       focusMode: mdFocusMode,
+                                       pendingScrollAnchor: $pendingMDAnchor,
+                                       searchController: mdSearch)
+                case .quick:
+                    if let attr = markdownAttributed {
+                        MarkdownView(attributedString: attr,
+                                     anchors: markdownAnchors,
+                                     liveSearchText: $searchText)
+                    } else {
+                        Text("Loading…").foregroundStyle(.secondary)
+                    }
+                }
+                if showSearch {
+                    searchBar
                 }
             }
         } else if isViewingEML {
@@ -1264,6 +1296,23 @@ struct ContentView: View {
             }
         }
         return count
+    }
+}
+
+// MARK: - Find commands listener
+// Separate ViewModifier so the giant `viewWithNotifications` body doesn't
+// blow past the Swift type-checker's complexity budget.
+
+struct FindCommandsListener: ViewModifier {
+    let onShowFind: () -> Void
+    let onFindNext: () -> Void
+    let onFindPrev: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .pdfShowFind)) { _ in onShowFind() }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfFindNext)) { _ in onFindNext() }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfFindPrev)) { _ in onFindPrev() }
     }
 }
 
