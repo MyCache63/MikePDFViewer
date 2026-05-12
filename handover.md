@@ -1,10 +1,28 @@
-# MikePDFViewer Handover — May 10, 2026
+# MikePDFViewer Handover — May 12, 2026
 
-## Current State: v6.1.0 — Full v6 Reader (Phases 1-8 complete)
+## Current State: v6.2.0 — Search works in MD Reader, MD Quick, PDF, DOCX, EML
 
-**BUILD STATUS:** v6.1.0 builds (both `swift build` and Xcode), installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v6.2.0 builds (both `swift build` and Xcode), installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Safety tags:** `before-md-phases-4-8-may10` (v6.1.0 starting point), `before-md-reader-may8` (v5.9.0), `before-md-docx-may4`, `before-md-render-fix-may4`, `before-eml-support-apr30`
+**Safety tags:** `before-md-search-may12` (v6.2.0 starting point), `before-md-phases-4-8-may10` (v6.1.0), `before-md-reader-may8` (v5.9.0), `before-md-docx-may4`, `before-md-render-fix-may4`, `before-eml-support-apr30`
+
+### v6.2.0 — Cmd+F now works in every document type
+
+Previously Cmd+F only did anything for PDF/DOCX/EML (PDFKit's `findString`). For .md files the search bar opened but did nothing. v6.2.0 wires up:
+
+- **MD Reader (WKWebView):** New `MarkdownSearchController` (public, ObservableObject) that drives `WKWebView.find(_:configuration:)`. The app's search bar now has Prev/Next chevrons, live find as you type, Return advances, Shift+Return goes back, "No match" indicator. Same `find()` mechanic Safari uses — same highlight overlay.
+- **MD Quick (NSTextView):** Two paths:
+  1. `usesFindBar = true` so Cmd+F when the text view is focused opens the native macOS find bar with full prev/next/options.
+  2. The app's search bar also drives the text view directly: live highlight (yellow background tint) on every match, scroll to first.
+- **PDF / DOCX / EML:** Unchanged. PDFKit's existing `findString` handling continues to work.
+
+### Public Kit API additions
+- `MarkdownSearchController` (new, public, `@MainActor`, ObservableObject):
+  - `find(_:caseSensitive:)`, `findNext(caseSensitive:)`, `findPrev(caseSensitive:)`, `clear()`
+  - Published `lastQuery` and `lastResult` (`.idle` / `.match` / `.noMatch`)
+- `MarkdownReaderView` gains optional `searchController: MarkdownSearchController?` parameter (default `nil`). Hosts that want search hold a single controller, pass it in, and call its methods from anywhere.
+
+### v6.1.0 — Phases 4-8 of v6 plan complete
 
 ### v6.1.0 — Phases 4-8 of v6 plan complete
 

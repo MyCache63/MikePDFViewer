@@ -70,6 +70,7 @@ struct ContentView: View {
     @State private var markdownStats: ReadingStats = .empty
     @State private var pendingMDAnchor: String? = nil
     @AppStorage("markdown-toc-visible") private var mdTOCVisible: Bool = true
+    @StateObject private var mdSearch = MarkdownSearchController()
 
     private var markdownTheme: MarkdownReaderTheme {
         MarkdownReaderTheme(rawValue: markdownThemeRaw) ?? .github
@@ -389,10 +390,13 @@ struct ContentView: View {
                                    theme: markdownTheme,
                                    typography: markdownTypography,
                                    focusMode: mdFocusMode,
-                                   pendingScrollAnchor: $pendingMDAnchor)
+                                   pendingScrollAnchor: $pendingMDAnchor,
+                                   searchController: mdSearch)
             case .quick:
                 if let attr = markdownAttributed {
-                    MarkdownView(attributedString: attr, anchors: markdownAnchors)
+                    MarkdownView(attributedString: attr,
+                                 anchors: markdownAnchors,
+                                 liveSearchText: $searchText)
                 } else {
                     Text("Loading…").foregroundStyle(.secondary)
                 }
@@ -441,7 +445,7 @@ struct ContentView: View {
                 emptyState
             }
 
-            if showSearch, pdfDocument != nil {
+            if showSearch, (pdfDocument != nil || isViewingMarkdown) {
                 searchBar
             }
 
@@ -847,6 +851,28 @@ struct ContentView: View {
 
     // MARK: - Search Bar
 
+    private var searchPlaceholder: String {
+        if isViewingMarkdown { return "Find in document…" }
+        return "Search in PDF…"
+    }
+
+    /// Route TextField changes to the right find machinery for the current
+    /// document. PDF/DOCX/EML keep using PDFKit (already wired via PDFKitView's
+    /// `searchText` binding). MD Reader uses WKWebView via mdSearch. MD Quick
+    /// is best-effort — Cmd+F still opens this bar, but a meaningful find for
+    /// NSTextView is deferred to a future patch; for now the user can switch
+    /// to Reader mode.
+    private func handleSearchTextChange(_ newValue: String) {
+        if isViewingMarkdown && markdownMode == .reader {
+            if newValue.isEmpty {
+                mdSearch.clear()
+            } else {
+                mdSearch.find(newValue)
+            }
+        }
+        // PDF mode: PDFKitView observes searchText directly and runs findString.
+    }
+
     private var searchBar: some View {
         VStack {
             HStack {
@@ -854,21 +880,52 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
-                    TextField("Search in PDF...", text: $searchText)
+                    TextField(searchPlaceholder, text: $searchText)
                         .textFieldStyle(.plain)
-                        .frame(width: 200)
+                        .frame(width: 220)
+                        .onChange(of: searchText) { _, newValue in
+                            handleSearchTextChange(newValue)
+                        }
+                        .onSubmit {
+                            if isViewingMarkdown && markdownMode == .reader {
+                                mdSearch.findNext()
+                            }
+                        }
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
+                            mdSearch.clear()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
                     }
+                    if isViewingMarkdown && markdownMode == .reader {
+                        Button { mdSearch.findPrev() } label: {
+                            Image(systemName: "chevron.up")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Previous match (Shift+Return)")
+                        .disabled(searchText.isEmpty)
+
+                        Button { mdSearch.findNext() } label: {
+                            Image(systemName: "chevron.down")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Next match (Return)")
+                        .disabled(searchText.isEmpty)
+
+                        if mdSearch.lastResult == .noMatch && !searchText.isEmpty {
+                            Text("No match")
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
+                    }
                     Button {
                         showSearch = false
                         searchText = ""
+                        mdSearch.clear()
                     } label: {
                         Text("Done").font(.caption)
                     }

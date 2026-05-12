@@ -7,6 +7,18 @@ import AppKit
 struct MarkdownView: NSViewRepresentable {
     let attributedString: NSAttributedString
     let anchors: [String: NSRange]
+    /// External "find" trigger: when the host's binding flips to a non-nil
+    /// non-empty string, scroll the text view to the first match and select it.
+    /// Empty / nil clears the current selection.
+    @Binding var liveSearchText: String
+
+    init(attributedString: NSAttributedString,
+         anchors: [String: NSRange],
+         liveSearchText: Binding<String> = .constant("")) {
+        self.attributedString = attributedString
+        self.anchors = anchors
+        self._liveSearchText = liveSearchText
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(anchors: anchors)
@@ -35,6 +47,10 @@ struct MarkdownView: NSViewRepresentable {
             .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand
         ]
+        // Enable NSTextFinder's find bar: Cmd+F (when the text view is first
+        // responder) gives the user the system's native Find UI for free.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         textView.textStorage?.setAttributedString(attributedString)
@@ -45,7 +61,43 @@ struct MarkdownView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.anchors = anchors
         context.coordinator.textView = textView
-        textView.textStorage?.setAttributedString(attributedString)
+        // Only re-set the storage when the attributed string actually changed —
+        // otherwise we'd nuke the user's current selection on every typed
+        // character in the search bar.
+        if textView.attributedString() !== attributedString {
+            textView.textStorage?.setAttributedString(attributedString)
+        }
+        // Live search driven by the host's search bar.
+        if liveSearchText != context.coordinator.lastLiveSearchText {
+            context.coordinator.lastLiveSearchText = liveSearchText
+            applyLiveSearch(in: textView, query: liveSearchText)
+        }
+    }
+
+    private func applyLiveSearch(in textView: NSTextView, query: String) {
+        guard let storage = textView.textStorage else { return }
+        // Always clear any prior highlight regardless of whether the query is empty.
+        let fullRange = NSRange(location: 0, length: storage.length)
+        storage.removeAttribute(.backgroundColor, range: fullRange)
+        guard !query.isEmpty else {
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            return
+        }
+        let haystack = storage.string as NSString
+        var searchStart = 0
+        var firstRange: NSRange? = nil
+        while searchStart < haystack.length {
+            let remaining = NSRange(location: searchStart, length: haystack.length - searchStart)
+            let found = haystack.range(of: query, options: .caseInsensitive, range: remaining)
+            if found.location == NSNotFound { break }
+            storage.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.45), range: found)
+            if firstRange == nil { firstRange = found }
+            searchStart = found.location + max(1, found.length)
+        }
+        if let first = firstRange {
+            textView.scrollRangeToVisible(first)
+            textView.setSelectedRange(first)
+        }
     }
 
     /// Handles link clicks: in-document `#slug` anchors scroll within the view;
@@ -54,6 +106,7 @@ struct MarkdownView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var anchors: [String: NSRange]
         weak var textView: NSTextView?
+        var lastLiveSearchText: String = ""
 
         init(anchors: [String: NSRange]) {
             self.anchors = anchors

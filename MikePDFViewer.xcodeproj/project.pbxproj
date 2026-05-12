@@ -49,6 +49,7 @@
 		AA00020E /* MarkdownTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030E /* MarkdownTypography.swift */; };
 		AA00020F /* MarkdownReaderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00030F /* MarkdownReaderSettings.swift */; };
 		AA000210 /* MarkdownTOCSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000310 /* MarkdownTOCSidebar.swift */; };
+		AA000211 /* MarkdownSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000311 /* MarkdownSearchController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -97,6 +98,7 @@
 		AA00030E /* MarkdownTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTypography.swift; sourceTree = "<group>"; };
 		AA00030F /* MarkdownReaderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReaderSettings.swift; sourceTree = "<group>"; };
 		AA000310 /* MarkdownTOCSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTOCSidebar.swift; sourceTree = "<group>"; };
+		AA000311 /* MarkdownSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSearchController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -165,6 +167,7 @@
 				AA00030E /* MarkdownTypography.swift */,
 				AA00030F /* MarkdownReaderSettings.swift */,
 				AA000310 /* MarkdownTOCSidebar.swift */,
+				AA000311 /* MarkdownSearchController.swift */,
 			);
 			path = MikePDFViewer;
 			sourceTree = "<group>";
@@ -287,6 +290,7 @@
 				AA00020E /* MarkdownTypography.swift in Sources */,
 				AA00020F /* MarkdownReaderSettings.swift in Sources */,
 				AA000210 /* MarkdownTOCSidebar.swift in Sources */,
+				AA000211 /* MarkdownSearchController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -429,7 +433,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.1.0;
+				MARKETING_VERSION = 6.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -457,7 +461,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.1.0;
+				MARKETING_VERSION = 6.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

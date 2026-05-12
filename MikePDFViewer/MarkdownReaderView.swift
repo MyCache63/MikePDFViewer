@@ -34,19 +34,25 @@ public struct MarkdownReaderView: NSViewRepresentable {
     /// observed value, the view scrolls to that anchor slug then nothing more.
     /// Hosts can leave this as `.constant(nil)` if they don't need anchor jumps.
     public var pendingScrollAnchor: Binding<String?>
+    /// Optional controller for find-in-page. Pass one if you want to drive
+    /// search programmatically; the view binds the underlying WKWebView so the
+    /// controller's `find` / `findNext` / `findPrev` methods route to it.
+    public let searchController: MarkdownSearchController?
 
     public init(source: String,
                 baseURL: URL?,
                 theme: MarkdownReaderTheme = .github,
                 typography: MarkdownTypography = .default,
                 focusMode: Bool = false,
-                pendingScrollAnchor: Binding<String?> = .constant(nil)) {
+                pendingScrollAnchor: Binding<String?> = .constant(nil),
+                searchController: MarkdownSearchController? = nil) {
         self.source = source
         self.baseURL = baseURL
         self.theme = theme
         self.typography = typography
         self.focusMode = focusMode
         self.pendingScrollAnchor = pendingScrollAnchor
+        self.searchController = searchController
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -65,11 +71,17 @@ public struct MarkdownReaderView: NSViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
+        searchController?.webView = webView
         loadContent(into: webView)
         return webView
     }
 
     public func updateNSView(_ webView: WKWebView, context: Context) {
+        // Re-bind the search controller's WebView in case the controller
+        // identity changed (e.g. SwiftUI re-creating ContentView).
+        if searchController?.webView !== webView {
+            searchController?.webView = webView
+        }
         if context.coordinator.lastRenderedSource != source
             || context.coordinator.lastTheme != theme
             || context.coordinator.lastTypography != typography
