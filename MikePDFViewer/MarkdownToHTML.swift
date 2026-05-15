@@ -33,6 +33,7 @@ enum MarkdownToHTML {
         var currentBlockHTML = ""
         var currentBlockKind: BlockKind = .paragraph
         var currentBlockText = ""
+        var table: TableAccumulator? = nil
 
         func flushBlock() {
             guard !currentBlockHTML.isEmpty || isStandaloneBlock(currentBlockKind) else { return }
@@ -48,10 +49,44 @@ enum MarkdownToHTML {
             }
         }
 
+        func flushTable() {
+            if let t = table {
+                output += t.render()
+                table = nil
+            }
+        }
+
         for run in parsed.runs {
             let intent = run.presentationIntent
-            let id = intent?.components.first?.identity
+            let runText = String(parsed[run.range].characters)
 
+            // GFM tables: each cell is its own block in AttributedString land
+            // (innermost component is .tableCell). Route them into a
+            // TableAccumulator so we emit one <table>...</table> instead of
+            // many <p>cell</p> paragraphs.
+            if let intent = intent, let info = tableInfo(from: intent) {
+                if table == nil {
+                    flushBlock()
+                    closeListIfNeeded()
+                }
+                if table?.tableID != info.tableID {
+                    flushTable()
+                    table = TableAccumulator(tableID: info.tableID, columns: info.columns)
+                }
+                let html = renderInline(text: runText, run: run)
+                table!.add(rowID: info.rowID,
+                           isHeader: info.isHeader,
+                           cellID: info.cellID,
+                           cellIndex: info.cellIndex,
+                           html: html)
+                prevBlockID = nil  // table runs sit outside normal block tracking
+                continue
+            }
+
+            // Non-table run — flush any pending table first.
+            flushTable()
+
+            let id = intent?.components.first?.identity
             if id != prevBlockID {
                 flushBlock()
             }
@@ -75,7 +110,6 @@ enum MarkdownToHTML {
                 closeListIfNeeded()
             }
 
-            let runText = String(parsed[run.range].characters)
             currentBlockText += runText
             currentBlockHTML += renderInline(text: runText, run: run)
 
@@ -83,9 +117,148 @@ enum MarkdownToHTML {
         }
 
         flushBlock()
+        flushTable()
         closeListIfNeeded()
 
         return (output, toc)
+    }
+
+    // MARK: - Table support
+
+    /// Pulled out of a run's PresentationIntent: the table / row / cell ids
+    /// plus whether the row is a header row and the cell's column index.
+    /// Returns nil if the intent isn't part of a table.
+    private struct TableInfo {
+        let tableID: Int
+        let columns: [PresentationIntent.TableColumn]
+        let rowID: Int
+        let isHeader: Bool
+        let cellID: Int
+        let cellIndex: Int
+    }
+
+    private static func tableInfo(from intent: PresentationIntent) -> TableInfo? {
+        var tableID: Int? = nil
+        var columns: [PresentationIntent.TableColumn] = []
+        var rowID: Int? = nil
+        var isHeader = false
+        var cellID: Int? = nil
+        var cellIndex: Int? = nil
+
+        for component in intent.components {
+            switch component.kind {
+            case .table(let cols):
+                tableID = component.identity
+                columns = cols
+            case .tableHeaderRow:
+                rowID = component.identity
+                isHeader = true
+            case .tableRow:
+                rowID = component.identity
+                isHeader = false
+            case .tableCell(let idx):
+                cellID = component.identity
+                cellIndex = idx
+            default:
+                break
+            }
+        }
+
+        guard let tID = tableID, let rID = rowID, let cID = cellID, let cIdx = cellIndex else {
+            return nil
+        }
+        return TableInfo(tableID: tID, columns: columns, rowID: rID, isHeader: isHeader, cellID: cID, cellIndex: cIdx)
+    }
+
+    /// Streams cell HTML into rows and rows into a single table, then emits
+    /// `<table><thead>...<tbody>...</table>`. Handles continuation runs (e.g.
+    /// a cell with bold inline produces multiple runs sharing the same cell ID)
+    /// by appending into the last cell when the cell ID hasn't changed.
+    private final class TableAccumulator {
+        let tableID: Int
+        let columns: [PresentationIntent.TableColumn]
+
+        private var rows: [Row] = []
+        private var currentRow: Row? = nil
+        private var currentRowID: Int? = nil
+        private var currentCellID: Int? = nil
+
+        struct Row {
+            var isHeader: Bool
+            var cells: [Cell] = []
+        }
+        struct Cell {
+            var columnIndex: Int
+            var html: String
+        }
+
+        init(tableID: Int, columns: [PresentationIntent.TableColumn]) {
+            self.tableID = tableID
+            self.columns = columns
+        }
+
+        func add(rowID: Int, isHeader: Bool, cellID: Int, cellIndex: Int, html: String) {
+            if currentRowID != rowID {
+                // New row — push the prior one and start fresh.
+                if let row = currentRow {
+                    rows.append(row)
+                }
+                currentRow = Row(isHeader: isHeader)
+                currentRowID = rowID
+                currentCellID = nil
+            }
+            if currentCellID != cellID {
+                currentRow?.cells.append(Cell(columnIndex: cellIndex, html: html))
+                currentCellID = cellID
+            } else if let lastIdx = currentRow?.cells.indices.last {
+                // Continuation of the same cell — append HTML.
+                currentRow?.cells[lastIdx].html += html
+            }
+        }
+
+        func render() -> String {
+            if let row = currentRow {
+                rows.append(row)
+            }
+            let headers = rows.filter { $0.isHeader }
+            let body = rows.filter { !$0.isHeader }
+            var html = "<table>"
+            if !headers.isEmpty {
+                html += "<thead>"
+                for row in headers { html += renderRow(row, asHeader: true) }
+                html += "</thead>"
+            }
+            if !body.isEmpty {
+                html += "<tbody>"
+                for row in body { html += renderRow(row, asHeader: false) }
+                html += "</tbody>"
+            }
+            html += "</table>"
+            return html
+        }
+
+        private func renderRow(_ row: Row, asHeader: Bool) -> String {
+            var html = "<tr>"
+            for cell in row.cells {
+                let tag = asHeader ? "th" : "td"
+                let align = (cell.columnIndex < columns.count)
+                    ? cssAlignment(columns[cell.columnIndex].alignment)
+                    : ""
+                let style = align.isEmpty ? "" : " style=\"text-align:\(align)\""
+                html += "<\(tag)\(style)>\(cell.html)</\(tag)>"
+            }
+            html += "</tr>"
+            return html
+        }
+
+        private func cssAlignment(_ a: PresentationIntent.TableColumn.Alignment) -> String {
+            switch a {
+            case .left: return "left"
+            case .center: return "center"
+            case .right: return "right"
+            @unknown default: return ""
+            }
+        }
     }
 
     /// Convenience wrapper for callers who only need the HTML.

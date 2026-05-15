@@ -1,6 +1,27 @@
-# MikePDFViewer Handover — May 12, 2026
+# MikePDFViewer Handover — May 15, 2026
 
-## Current State: v6.2.0 — Search works in MD Reader, MD Quick, PDF, DOCX, EML
+## Current State: v6.3.0 — GFM tables now render as real tables
+
+**BUILD STATUS:** v6.3.0 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`
+**Repo:** https://github.com/MyCache63/MikePDFViewer
+**Latest safety tag:** `before-md-tables-may15` (v6.3.0 starting point)
+
+### v6.3.0 — Pipe tables
+
+Until v6.2.1, GFM pipe tables (`| col1 | col2 |`) rendered as a flat vertical list of paragraphs — each cell was a separate `<p>`. Root cause: `AttributedString(markdown:)` does emit table presentation intents (`table` / `tableHeaderRow` / `tableRow` / `tableCell N`), but `MarkdownToHTML.classifyBlock` ignored them and fell through to `.paragraph`.
+
+Fix: `MarkdownToHTML.render` now detects table runs (any intent component with `case .table`), routes them into a new `TableAccumulator` that groups cells into rows and rows into tables, and emits proper `<table><thead><tbody>` HTML. Column alignments (`:---`, `:---:`, `---:`) carry through as `style="text-align:..."` on each cell.
+
+The existing theme bundle already had GitHub/MacDown-style table CSS (borders, alternating row backgrounds, bold header) — it just had no `<table>` elements to style. With this fix, tables in your handover and plan docs now render correctly.
+
+Applies everywhere `MarkdownToHTML` is used:
+- Reader mode (WKWebView)
+- Render-as-PDF
+- Any host using `MarkdownToHTML.render(_:)` directly
+
+### v6.2.1 — Fix Cmd+F doink
+
+### v6.2.0 — Search works in MD Reader, MD Quick, PDF, DOCX, EML
 
 **BUILD STATUS:** v6.2.0 builds (both `swift build` and Xcode), installed to `/Applications/MikePDFViewer.app`
 **Repo:** https://github.com/MyCache63/MikePDFViewer
