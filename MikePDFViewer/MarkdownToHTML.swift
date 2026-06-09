@@ -238,14 +238,29 @@ enum MarkdownToHTML {
         }
 
         private func renderRow(_ row: Row, asHeader: Bool) -> String {
+            let tag = asHeader ? "th" : "td"
+
+            // Apple's AttributedString markdown parser emits NO run for an empty
+            // cell, so empty cells never reach this accumulator — they're simply
+            // absent from `row.cells`. If we rendered cells in sequence, a row
+            // with an empty cell (e.g. a header whose top-left corner is blank)
+            // would come out one column short and every cell after the gap would
+            // shift. So place each cell at its true columnIndex and fill any
+            // missing column with an empty cell to keep every row aligned.
+            let maxSeen = (row.cells.map { $0.columnIndex }.max() ?? -1) + 1
+            let colCount = max(columns.count, maxSeen)
+            guard colCount > 0 else { return "<tr></tr>" }
+
+            var cellHTML = [String](repeating: "", count: colCount)
+            for cell in row.cells where cell.columnIndex >= 0 && cell.columnIndex < colCount {
+                cellHTML[cell.columnIndex] = cell.html
+            }
+
             var html = "<tr>"
-            for cell in row.cells {
-                let tag = asHeader ? "th" : "td"
-                let align = (cell.columnIndex < columns.count)
-                    ? cssAlignment(columns[cell.columnIndex].alignment)
-                    : ""
+            for idx in 0..<colCount {
+                let align = idx < columns.count ? cssAlignment(columns[idx].alignment) : ""
                 let style = align.isEmpty ? "" : " style=\"text-align:\(align)\""
-                html += "<\(tag)\(style)>\(cell.html)</\(tag)>"
+                html += "<\(tag)\(style)>\(cellHTML[idx])</\(tag)>"
             }
             html += "</tr>"
             return html
