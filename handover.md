@@ -1,10 +1,29 @@
-# MikePDFViewer Handover — May 15, 2026
+# MikePDFViewer Handover - July 2, 2026
 
-## Current State: v6.3.0 — GFM tables now render as real tables
+## Current State: v6.3.1 - Sharp Retina thumbnails in the sidebar
 
-**BUILD STATUS:** v6.3.0 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`
+**BUILD STATUS:** v6.3.1 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's visual confirmation
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tag:** `before-md-tables-may15` (v6.3.0 starting point)
+**Latest safety tag:** `before-thumbnail-fix-jul2` (v6.3.0 starting point)
+
+### v6.3.1 - Fix fuzzy sidebar thumbnails (July 2)
+
+Michael reported the page previews in the left sidebar looked fuzzy. Root cause: `ThumbnailItem.generateThumbnail()` in `MikePDFViewer/ThumbnailSidebar.swift` rendered every page at a fixed 120x160 points, and SwiftUI then stretched that tiny bitmap to the full sidebar width on a Retina display (roughly a 4x upscale).
+
+Fix, all in `ThumbnailSidebar.swift`:
+- A GeometryReader now measures the actual on-screen thumbnail width, and pages render at that width times `NSScreen.backingScaleFactor` (bucketed to 64 px steps so live sidebar resizing does not re-render on every pixel of drag).
+- Height is computed from the real page aspect ratio (rotation-aware) instead of assuming 120x160.
+- New module-level `NSCache` keyed by document identity + page + documentVersion + pixel width, so scrolling back through the sidebar reuses already-rendered thumbnails (LazyVStack destroys off-screen rows, which previously forced a re-render on every scroll pass).
+- Regeneration on documentVersion change (page move/delete) remembers the last measured width.
+
+### Next steps / ideas
+See `MikePDFViewer_EnhancementIdeas_v01.0.0_Jul2.md` for a prioritized enhancement list (recent files, thumbnail size slider, annotations, native OCR, etc). Suggested next release: v6.4.0 with Open Recent + reopen-last-document + thumbnail size slider.
+
+---
+
+## Previous state (May 15, 2026): v6.3.0 — GFM tables now render as real tables
+
+**Prior safety tag:** `before-md-tables-may15` (v6.3.0 starting point)
 
 ### v6.3.0 — Pipe tables
 
