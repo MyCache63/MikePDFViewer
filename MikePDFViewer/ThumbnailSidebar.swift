@@ -170,6 +170,10 @@ struct PageDropDelegate: DropDelegate {
 
 // MARK: - Thumbnail Item
 
+/// Cache of rendered page thumbnails so scrolling doesn't re-render pages
+/// that were already generated at the current size and document version.
+private let thumbnailCache = NSCache<NSString, NSImage>()
+
 struct ThumbnailItem: View {
     let document: PDFDocument
     let pageIndex: Int
@@ -179,6 +183,8 @@ struct ThumbnailItem: View {
     let documentVersion: Int
 
     @State private var thumbnail: NSImage?
+    @State private var renderedPixelWidth: CGFloat = 0
+    @State private var lastDisplayWidth: CGFloat = 0
 
     private var borderColor: Color {
         if isSelected { return .accentColor }
@@ -204,7 +210,15 @@ struct ThumbnailItem: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .background(Color.white)
+            .background(
+                GeometryReader { geo in
+                    Color.white
+                        .onAppear { generateThumbnail(displayWidth: geo.size.width) }
+                        .onChange(of: geo.size.width) { _, newWidth in
+                            generateThumbnail(displayWidth: newWidth)
+                        }
+                }
+            )
             .cornerRadius(4)
             .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
             .overlay(
@@ -234,21 +248,44 @@ struct ThumbnailItem: View {
         .padding(.horizontal, 4)
         .background(isMultiSelected ? Color.orange.opacity(0.08) : Color.clear)
         .cornerRadius(4)
-        .onAppear {
-            generateThumbnail()
-        }
         .onChange(of: documentVersion) { _, _ in
             thumbnail = nil
-            generateThumbnail()
+            renderedPixelWidth = 0
+            generateThumbnail(displayWidth: lastDisplayWidth)
         }
     }
 
-    private func generateThumbnail() {
-        DispatchQueue.global(qos: .utility).async {
+    /// Renders the page at the actual on-screen width times the Retina scale
+    /// factor. The old fixed 120x160 render got stretched to sidebar width,
+    /// which made every thumbnail fuzzy on Retina displays.
+    private func generateThumbnail(displayWidth: CGFloat) {
+        lastDisplayWidth = displayWidth
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        // Bucket to multiples of 64 px so live sidebar resizing doesn't
+        // trigger a re-render on every single pixel of drag.
+        let rawPixelWidth = max(displayWidth, 120) * scale
+        let pixelWidth = ceil(rawPixelWidth / 64) * 64
+
+        guard pixelWidth > renderedPixelWidth else { return }
+        renderedPixelWidth = pixelWidth
+
+        let cacheKey = "\(ObjectIdentifier(document).hashValue)-\(pageIndex)-\(documentVersion)-\(Int(pixelWidth))" as NSString
+        if let cached = thumbnailCache.object(forKey: cacheKey) {
+            thumbnail = cached
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
             guard let page = document.page(at: pageIndex) else { return }
-            let size = CGSize(width: 120, height: 160)
+            let bounds = page.bounds(for: .mediaBox)
+            let rotated = page.rotation % 180 != 0
+            let pageW = rotated ? bounds.height : bounds.width
+            let pageH = rotated ? bounds.width : bounds.height
+            let aspect = pageW > 0 ? pageH / pageW : 11.0 / 8.5
+            let size = CGSize(width: pixelWidth, height: pixelWidth * aspect)
             let img = page.thumbnail(of: size, for: .mediaBox)
             DispatchQueue.main.async {
+                thumbnailCache.setObject(img, forKey: cacheKey)
                 thumbnail = img
             }
         }
