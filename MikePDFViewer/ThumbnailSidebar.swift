@@ -13,6 +13,7 @@ struct ThumbnailSidebar: View {
 
     @State private var draggedPage: Int?
     @State private var selectedPages: Set<Int> = []
+    @AppStorage("thumbnail-max-width") private var thumbnailMaxWidth: Double = 200
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -60,6 +61,23 @@ struct ThumbnailSidebar: View {
                         proxy.scrollTo(newPage, anchor: .center)
                     }
                 }
+
+                Divider()
+
+                // Thumbnail size control
+                HStack(spacing: 8) {
+                    Image(systemName: "square.fill")
+                        .font(.system(size: 7))
+                        .foregroundStyle(.secondary)
+                    Slider(value: $thumbnailMaxWidth, in: 80...320)
+                        .controlSize(.mini)
+                    Image(systemName: "square.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .help("Thumbnail size")
             }
         }
     }
@@ -74,6 +92,8 @@ struct ThumbnailSidebar: View {
             isBookmarked: bookmarkManager.isBookmarked(index),
             documentVersion: documentVersion
         )
+        .frame(maxWidth: thumbnailMaxWidth)
+        .frame(maxWidth: .infinity)
         .id(index)
         .onTapGesture {
             if NSEvent.modifierFlags.contains(.command) {
