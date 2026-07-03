@@ -44,6 +44,7 @@ extension FocusedValues {
 @main
 struct MikePDFViewerApp: App {
     @StateObject private var recentFiles = RecentFilesManager()
+    @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @FocusedValue(\.pdfDocument) var focusedDocument
     @FocusedValue(\.pdfFileURL) var focusedURL
     @FocusedValue(\.isDarkMode) var isDarkMode
@@ -126,7 +127,10 @@ struct MikePDFViewerApp: App {
                     } else {
                         ForEach(recentFiles.recentURLs, id: \.self) { url in
                             Button(url.lastPathComponent) {
-                                NotificationCenter.default.post(name: .pdfOpenFile, object: nil, userInfo: ["url": url])
+                                // Resolve the security-scoped bookmark so the
+                                // sandbox lets us read the file after relaunch.
+                                let resolved = recentFiles.beginAccess(url)
+                                NotificationCenter.default.post(name: .pdfOpenFile, object: nil, userInfo: ["url": resolved])
                             }
                         }
                         Divider()
@@ -135,6 +139,10 @@ struct MikePDFViewerApp: App {
                         }
                     }
                 }
+
+                Divider()
+
+                Toggle("Reopen Last File on Launch", isOn: $reopenLastDocument)
             }
 
             // MARK: Edit Menu

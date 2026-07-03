@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @State var pdfURL: URL?
     @EnvironmentObject var recentFiles: RecentFilesManager
+    @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @State private var pdfDocument: PDFDocument?
     @State private var currentPage: Int = 0
     @State private var totalPages: Int = 0
@@ -252,7 +253,14 @@ struct ContentView: View {
                 onFindPrev: { handleFindPrevCommand() }
             ))
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
-            .onAppear { loadDocument(from: pdfURL) }
+            .onAppear {
+                if pdfURL == nil && reopenLastDocument,
+                   let lastURL = recentFiles.mostRecentExistingURL {
+                    pdfURL = lastURL
+                } else {
+                    loadDocument(from: pdfURL)
+                }
+            }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
     }
 
