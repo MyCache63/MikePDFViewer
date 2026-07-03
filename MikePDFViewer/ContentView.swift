@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var currentPage: Int = 0
     @State private var totalPages: Int = 0
     @State private var searchText: String = ""
+    @State private var debouncedSearchText: String = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     @State private var showSearch = false
     @State private var showMergeSheet = false
     @State private var sidebarVisible = true
@@ -477,7 +479,7 @@ struct ContentView: View {
                 PDFKitView(
                     document: document,
                     currentPage: $currentPage,
-                    searchText: searchText,
+                    searchText: debouncedSearchText,
                     darkMode: darkModeReading,
                     displayMode: displayMode
                 )
@@ -910,7 +912,19 @@ struct ContentView: View {
                 mdSearch.find(newValue)
             }
         }
-        // PDF mode: PDFKitView observes searchText directly and runs findString.
+        // PDF mode: PDFKitView observes debouncedSearchText and runs
+        // findString. findString walks the whole document synchronously, so
+        // waiting 200 ms for typing to pause keeps large PDFs responsive.
+        searchDebounceTask?.cancel()
+        if newValue.isEmpty {
+            debouncedSearchText = ""
+        } else {
+            searchDebounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+                debouncedSearchText = newValue
+            }
+        }
     }
 
     private var searchBar: some View {
