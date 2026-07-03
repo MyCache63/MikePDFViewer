@@ -132,6 +132,14 @@ struct ThumbnailSidebar: View {
                 sidebarFocused = true
             }
         }
+        .contextMenu {
+            Button("Export Page \(index + 1) as PNG…") {
+                exportPageAsPNG(index: index)
+            }
+            Button("Copy Page as Image") {
+                copyPageImage(index: index)
+            }
+        }
         .onDrag {
             draggedPage = index
             return NSItemProvider(object: "\(index)" as NSString)
@@ -141,6 +149,28 @@ struct ThumbnailSidebar: View {
             draggedPage: $draggedPage,
             onMovePage: onMovePage
         ))
+    }
+
+    private func exportPageAsPNG(index: Int) {
+        guard let page = document.page(at: index) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "page_\(index + 1).png"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let data = PageRenderer.renderPageToPNG(page, dpi: 300) {
+                try? data.write(to: url)
+            }
+        }
+    }
+
+    private func copyPageImage(index: Int) {
+        guard let page = document.page(at: index),
+              let data = PageRenderer.renderPageToPNG(page, dpi: 300),
+              let image = NSImage(data: data) else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([image])
     }
 
     private var bookmarkSection: some View {
