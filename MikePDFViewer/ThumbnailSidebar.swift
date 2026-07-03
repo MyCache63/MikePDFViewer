@@ -15,6 +15,8 @@ struct ThumbnailSidebar: View {
     @State private var selectedPages: Set<Int> = []
     @AppStorage("thumbnail-max-width") private var thumbnailMaxWidth: Double = 200
     @FocusState private var sidebarFocused: Bool
+    @State private var sidebarWidth: CGFloat = 0
+    @State private var lastPrewarmKey: String = ""
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -80,6 +82,14 @@ struct ThumbnailSidebar: View {
                 .padding(.vertical, 6)
                 .help("Thumbnail size")
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { sidebarWidth = geo.size.width; prewarmThumbnails() }
+                        .onChange(of: geo.size.width) { _, w in sidebarWidth = w }
+                }
+            )
+            .onChange(of: documentVersion) { _, _ in prewarmThumbnails() }
             .focusable()
             .focused($sidebarFocused)
             .focusEffectDisabled()
@@ -149,6 +159,31 @@ struct ThumbnailSidebar: View {
             draggedPage: $draggedPage,
             onMovePage: onMovePage
         ))
+    }
+
+    /// Renders the first pages into the thumbnail cache right after a
+    /// document opens, so the sidebar appears sharp immediately instead of
+    /// showing a placeholder per row while scrolling.
+    private func prewarmThumbnails() {
+        let key = "\(ObjectIdentifier(document).hashValue)-\(documentVersion)"
+        guard key != lastPrewarmKey else { return }
+        lastPrewarmKey = key
+
+        // Approximate the displayed thumbnail width: sidebar minus outer
+        // padding, capped by the size slider. Bucketing absorbs the estimate
+        // error; a mismatch just means the row renders once more on screen.
+        let displayWidth = min(max(sidebarWidth - 24, 120), thumbnailMaxWidth)
+        let pixelWidth = ThumbnailRenderer.pixelWidth(forDisplayWidth: displayWidth)
+        let doc = document
+        let version = documentVersion
+        let pageCount = min(totalPages, 20)
+
+        DispatchQueue.global(qos: .utility).async {
+            for i in 0..<pageCount {
+                if ThumbnailRenderer.cached(document: doc, pageIndex: i, version: version, pixelWidth: pixelWidth) != nil { continue }
+                ThumbnailRenderer.renderAndCache(document: doc, pageIndex: i, version: version, pixelWidth: pixelWidth)
+            }
+        }
     }
 
     private func exportPageAsPNG(index: Int) {
@@ -240,6 +275,42 @@ struct PageDropDelegate: DropDelegate {
 /// that were already generated at the current size and document version.
 private let thumbnailCache = NSCache<NSString, NSImage>()
 
+/// Shared render/cache logic used by both ThumbnailItem (on-demand) and
+/// ThumbnailSidebar's pre-warmer, so their cache entries are identical.
+enum ThumbnailRenderer {
+    static func pixelWidth(forDisplayWidth displayWidth: CGFloat) -> CGFloat {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        // Bucket to multiples of 64 px so live sidebar resizing doesn't
+        // trigger a re-render on every single pixel of drag.
+        let raw = max(displayWidth, 120) * scale
+        return ceil(raw / 64) * 64
+    }
+
+    static func cacheKey(document: PDFDocument, pageIndex: Int, version: Int, pixelWidth: CGFloat) -> NSString {
+        "\(ObjectIdentifier(document).hashValue)-\(pageIndex)-\(version)-\(Int(pixelWidth))" as NSString
+    }
+
+    static func cached(document: PDFDocument, pageIndex: Int, version: Int, pixelWidth: CGFloat) -> NSImage? {
+        thumbnailCache.object(forKey: cacheKey(document: document, pageIndex: pageIndex, version: version, pixelWidth: pixelWidth))
+    }
+
+    /// Renders a page thumbnail at the given pixel width and stores it in the
+    /// cache. Safe to call from a background queue.
+    @discardableResult
+    static func renderAndCache(document: PDFDocument, pageIndex: Int, version: Int, pixelWidth: CGFloat) -> NSImage? {
+        guard let page = document.page(at: pageIndex) else { return nil }
+        let bounds = page.bounds(for: .mediaBox)
+        let rotated = page.rotation % 180 != 0
+        let pageW = rotated ? bounds.height : bounds.width
+        let pageH = rotated ? bounds.width : bounds.height
+        let aspect = pageW > 0 ? pageH / pageW : 11.0 / 8.5
+        let size = CGSize(width: pixelWidth, height: pixelWidth * aspect)
+        let img = page.thumbnail(of: size, for: .mediaBox)
+        thumbnailCache.setObject(img, forKey: cacheKey(document: document, pageIndex: pageIndex, version: version, pixelWidth: pixelWidth))
+        return img
+    }
+}
+
 struct ThumbnailItem: View {
     let document: PDFDocument
     let pageIndex: Int
@@ -326,33 +397,21 @@ struct ThumbnailItem: View {
     /// which made every thumbnail fuzzy on Retina displays.
     private func generateThumbnail(displayWidth: CGFloat) {
         lastDisplayWidth = displayWidth
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        // Bucket to multiples of 64 px so live sidebar resizing doesn't
-        // trigger a re-render on every single pixel of drag.
-        let rawPixelWidth = max(displayWidth, 120) * scale
-        let pixelWidth = ceil(rawPixelWidth / 64) * 64
+        let pixelWidth = ThumbnailRenderer.pixelWidth(forDisplayWidth: displayWidth)
 
         guard pixelWidth > renderedPixelWidth else { return }
         renderedPixelWidth = pixelWidth
 
-        let cacheKey = "\(ObjectIdentifier(document).hashValue)-\(pageIndex)-\(documentVersion)-\(Int(pixelWidth))" as NSString
-        if let cached = thumbnailCache.object(forKey: cacheKey) {
+        if let cached = ThumbnailRenderer.cached(document: document, pageIndex: pageIndex, version: documentVersion, pixelWidth: pixelWidth) {
             thumbnail = cached
             return
         }
 
+        let version = documentVersion
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let page = document.page(at: pageIndex) else { return }
-            let bounds = page.bounds(for: .mediaBox)
-            let rotated = page.rotation % 180 != 0
-            let pageW = rotated ? bounds.height : bounds.width
-            let pageH = rotated ? bounds.width : bounds.height
-            let aspect = pageW > 0 ? pageH / pageW : 11.0 / 8.5
-            let size = CGSize(width: pixelWidth, height: pixelWidth * aspect)
-            let img = page.thumbnail(of: size, for: .mediaBox)
+            let img = ThumbnailRenderer.renderAndCache(document: document, pageIndex: pageIndex, version: version, pixelWidth: pixelWidth)
             DispatchQueue.main.async {
-                thumbnailCache.setObject(img, forKey: cacheKey)
-                thumbnail = img
+                if let img { thumbnail = img }
             }
         }
     }
