@@ -1,10 +1,33 @@
 # MikePDFViewer Handover - July 2, 2026
 
-## Current State: v6.3.1 - Sharp Retina thumbnails in the sidebar
+## Current State: v6.8.0 - Enhancement batch complete (7 features in one evening)
 
-**BUILD STATUS:** v6.3.1 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's visual confirmation
+**BUILD STATUS:** v6.8.0 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's testing
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tag:** `before-thumbnail-fix-jul2` (v6.3.0 starting point)
+**Latest safety tags:** `before-thumbnail-fix-jul2` (v6.3.0), `before-v6.4-enhancements-jul2` (v6.3.1)
+
+### July 2 evening batch - v6.4.0 through v6.8.0
+
+Michael approved doing all remaining enhancements. Full list with commit-per-feature in `MikePDFViewer_EnhancementIdeas_v01.1.0_Jul2.md`. Summary:
+
+- **v6.4.0** Reopen last file on launch (File menu toggle, default on). RecentFilesManager now stores security-scoped bookmarks; without them the sandboxed app could not reopen recent files after relaunch (pre-existing bug, now fixed).
+- **v6.4.1** 200 ms debounce on live PDF search (ContentView `handleSearchTextChange` -> `debouncedSearchText` -> PDFKitView).
+- **v6.5.0** Thumbnail size slider at the bottom of the sidebar (`thumbnail-max-width` AppStorage).
+- **v6.6.0** Up/Down arrow paging when the sidebar has focus (click a thumbnail first).
+- **v6.7.0** Right-click a thumbnail: Export Page as PNG / Copy Page as Image.
+- **v6.7.1** Pre-warm first 20 thumbnails after open (shared `ThumbnailRenderer` used by items and pre-warmer).
+- **v6.8.0** Make Searchable (OCR): new `SearchableOCRService.swift`. On-device Apple Vision OCR rebuilds the PDF with an invisible text layer on textless pages so Cmd+F / selection / copy work on scans. Toolbar button `text.viewfinder` + Tools menu item + progress sheet. Technique adapted from MIT-licensed mac-ocr (credited in file header and commit). Verified headlessly: rasterized scan went 0 -> 388 text chars, findString matches. Distinct from the existing LLM OCRService (OpenRouter, extracts text out).
+
+**Testing notes for Michael:**
+- Quit and relaunch the app twice: second launch should reopen your last file.
+- Open the FedEx label scan, press the new viewfinder toolbar button, then Cmd+F for "OMI" or the tracking number.
+- After Make Searchable, press Cmd+S to keep the searchable version (it does not auto-save).
+
+**Known limitations (documented in ideas doc):** OCR'd pages flatten annotations (still visible, not editable); word selection boxes on OCR'd pages are approximate.
+
+### Earlier today: v6.3.1 - Sharp Retina thumbnails
+
+Root cause of Michael's fuzzy-sidebar report: thumbnails rendered at fixed 120x160 and stretched. Now rendered at display width x Retina scale with an NSCache. Details below.
 
 ### v6.3.1 - Fix fuzzy sidebar thumbnails (July 2)
 
