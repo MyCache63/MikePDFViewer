@@ -16,6 +16,9 @@ struct ContentView: View {
     @State private var showMergeSheet = false
     @State private var sidebarVisible = true
     @State private var showOCRSheet = false
+    @State private var isMakingSearchable = false
+    @State private var makeSearchableProgress: Double = 0
+    @State private var makeSearchableMessage: String?
     @State private var showGoToPage = false
     @State private var goToPageText: String = ""
     @State private var darkModeReading = false
@@ -135,6 +138,14 @@ struct ContentView: View {
                         .frame(minWidth: 800, minHeight: 600)
                 }
             }
+            .sheet(isPresented: $isMakingSearchable) {
+                makeSearchableProgressSheet
+            }
+            .alert("Make Searchable", isPresented: makeSearchableAlertShown) {
+                Button("OK") { makeSearchableMessage = nil }
+            } message: {
+                Text(makeSearchableMessage ?? "")
+            }
             .sheet(isPresented: $showExtractSheet) {
                 if let document = pdfDocument {
                     PageExtractView(document: document)
@@ -231,6 +242,9 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfExtractPages)) { _ in
                 if pdfDocument != nil { showExtractSheet = true }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfMakeSearchable)) { _ in
+                makeSearchable()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .pdfShowMerge)) { _ in
                 showMergeSheet = true
             }
@@ -255,15 +269,17 @@ struct ContentView: View {
                 onFindPrev: { handleFindPrevCommand() }
             ))
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
-            .onAppear {
-                if pdfURL == nil && reopenLastDocument,
-                   let lastURL = recentFiles.mostRecentExistingURL {
-                    pdfURL = lastURL
-                } else {
-                    loadDocument(from: pdfURL)
-                }
-            }
+            .onAppear { handleAppear() }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
+    }
+
+    private func handleAppear() {
+        if pdfURL == nil && reopenLastDocument,
+           let lastURL = recentFiles.mostRecentExistingURL {
+            pdfURL = lastURL
+        } else {
+            loadDocument(from: pdfURL)
+        }
     }
 
     private func handleShowFindCommand() {
@@ -667,6 +683,12 @@ struct ContentView: View {
         }
         .help("OCR Document").disabled(pdfDocument == nil)
 
+        Button { makeSearchable() } label: {
+            Image(systemName: "text.viewfinder")
+        }
+        .help("Make Searchable (on-device OCR, adds a text layer so Cmd+F works on scans)")
+        .disabled(pdfDocument == nil || isMakingSearchable)
+
         Button { showEncryptSheet = true } label: {
             Image(systemName: "lock.shield")
         }
@@ -745,6 +767,62 @@ struct ContentView: View {
             }
         }
         .padding()
+    }
+
+    // MARK: - Make Searchable (on-device OCR)
+
+    private var makeSearchableAlertShown: Binding<Bool> {
+        Binding(
+            get: { makeSearchableMessage != nil },
+            set: { if !$0 { makeSearchableMessage = nil } }
+        )
+    }
+
+    private var makeSearchableProgressSheet: some View {
+        VStack(spacing: 12) {
+            Text("Making PDF Searchable")
+                .font(.headline)
+            ProgressView(value: makeSearchableProgress)
+                .frame(width: 260)
+            Text("Recognizing text on-device with Apple Vision…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(24)
+        .interactiveDismissDisabled()
+    }
+
+    private func makeSearchable() {
+        guard let document = pdfDocument, !isMakingSearchable else { return }
+        isMakingSearchable = true
+        makeSearchableProgress = 0
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let result = try SearchableOCRService.makeSearchable(document: document) { done, total in
+                    let fraction = Double(done) / Double(max(total, 1))
+                    DispatchQueue.main.async { makeSearchableProgress = fraction }
+                }
+                DispatchQueue.main.async {
+                    isMakingSearchable = false
+                    guard let newDoc = PDFDocument(data: result.data) else {
+                        makeSearchableMessage = "OCR finished but the rebuilt PDF could not be loaded. The original document is unchanged."
+                        return
+                    }
+                    let pageBefore = currentPage
+                    pdfDocument = newDoc
+                    totalPages = newDoc.pageCount
+                    currentPage = min(pageBefore, max(newDoc.pageCount - 1, 0))
+                    documentVersion += 1
+                    makeSearchableMessage = "Added searchable text to \(result.ocrPageCount) page\(result.ocrPageCount == 1 ? "" : "s"). Cmd+F now works. Press Cmd+S to save."
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    isMakingSearchable = false
+                    makeSearchableMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func navigateToPage() {

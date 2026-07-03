@@ -16,6 +16,7 @@
 		AA000007 /* RecentFilesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000018 /* RecentFilesManager.swift */; };
 		AA000008 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = AA000019 /* AppIcon.icns */; };
 		AA000009 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000021 /* OCRService.swift */; };
+		AA000090 /* SearchableOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000091 /* SearchableOCRService.swift */; };
 		AA00000A /* OCRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* OCRView.swift */; };
 		AA00000B /* DOCXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000023 /* DOCXExporter.swift */; };
 		AA00000C /* AnnotationToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000024 /* AnnotationToolbar.swift */; };
@@ -65,6 +66,7 @@
 		AA000019 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		AA000020 /* MikePDFViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MikePDFViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000021 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
+		AA000091 /* SearchableOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchableOCRService.swift; sourceTree = "<group>"; };
 		AA000022 /* OCRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRView.swift; sourceTree = "<group>"; };
 		AA000023 /* DOCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXExporter.swift; sourceTree = "<group>"; };
 		AA000024 /* AnnotationToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationToolbar.swift; sourceTree = "<group>"; };
@@ -134,6 +136,7 @@
 				AA000018 /* RecentFilesManager.swift */,
 				AA000019 /* AppIcon.icns */,
 				AA000021 /* OCRService.swift */,
+				AA000091 /* SearchableOCRService.swift */,
 				AA000022 /* OCRView.swift */,
 				AA000023 /* DOCXExporter.swift */,
 				AA000024 /* AnnotationToolbar.swift */,
@@ -257,6 +260,7 @@
 				AA000006 /* PDFMergeView.swift in Sources */,
 				AA000007 /* RecentFilesManager.swift in Sources */,
 				AA000009 /* OCRService.swift in Sources */,
+				AA000090 /* SearchableOCRService.swift in Sources */,
 				AA00000A /* OCRView.swift in Sources */,
 				AA00000B /* DOCXExporter.swift in Sources */,
 				AA00000C /* AnnotationToolbar.swift in Sources */,
@@ -433,7 +437,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.7.1;
+				MARKETING_VERSION = 6.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -461,7 +465,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.7.1;
+				MARKETING_VERSION = 6.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

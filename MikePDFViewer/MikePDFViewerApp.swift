@@ -199,6 +199,11 @@ struct MikePDFViewerApp: App {
                 }
                 .disabled(focusedDocument == nil)
 
+                Button("Make Searchable (OCR)") {
+                    NotificationCenter.default.post(name: .pdfMakeSearchable, object: nil)
+                }
+                .disabled(focusedDocument == nil)
+
                 Divider()
 
                 Button("Clear Rendered Temp Files") {

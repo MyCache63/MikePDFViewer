@@ -18,6 +18,7 @@ extension Notification.Name {
     static let pdfAddFreeText = Notification.Name("pdfAddFreeText")
     static let pdfToggleBookmark = Notification.Name("pdfToggleBookmark")
     static let pdfExtractPages = Notification.Name("pdfExtractPages")
+    static let pdfMakeSearchable = Notification.Name("pdfMakeSearchable")
     static let pdfOpenFile = Notification.Name("pdfOpenFile")
     static let pdfToggleSplitView = Notification.Name("pdfToggleSplitView")
     static let pdfStartPresentation = Notification.Name("pdfStartPresentation")
