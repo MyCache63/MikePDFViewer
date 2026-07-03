@@ -14,6 +14,7 @@ struct ThumbnailSidebar: View {
     @State private var draggedPage: Int?
     @State private var selectedPages: Set<Int> = []
     @AppStorage("thumbnail-max-width") private var thumbnailMaxWidth: Double = 200
+    @FocusState private var sidebarFocused: Bool
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -79,6 +80,19 @@ struct ThumbnailSidebar: View {
                 .padding(.vertical, 6)
                 .help("Thumbnail size")
             }
+            .focusable()
+            .focused($sidebarFocused)
+            .focusEffectDisabled()
+            .onMoveCommand { direction in
+                switch direction {
+                case .up:
+                    if currentPage > 0 { currentPage -= 1 }
+                case .down:
+                    if currentPage < totalPages - 1 { currentPage += 1 }
+                default:
+                    break
+                }
+            }
         }
     }
 
@@ -111,9 +125,11 @@ struct ThumbnailSidebar: View {
                     selectedPages.insert(i)
                 }
             } else {
-                // Normal click: navigate and clear selection
+                // Normal click: navigate, clear selection, take keyboard
+                // focus so Up/Down arrows page through the document
                 selectedPages.removeAll()
                 currentPage = index
+                sidebarFocused = true
             }
         }
         .onDrag {
