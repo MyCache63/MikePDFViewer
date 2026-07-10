@@ -294,10 +294,11 @@ struct MikePDFViewerApp: App {
 
     private func openPDF() {
         let panel = NSOpenPanel()
-        var types: [UTType] = [.pdf]
+        var types: [UTType] = [.pdf, .plainText]
         if let emlType = UTType(filenameExtension: "eml") { types.append(emlType) }
         if let docxType = UTType(filenameExtension: "docx") { types.append(docxType) }
         if let mdType = UTType(filenameExtension: "md") { types.append(mdType) }
+        if let logType = UTType(filenameExtension: "log") { types.append(logType) }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {

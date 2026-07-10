@@ -78,6 +78,14 @@ struct ContentView: View {
     @AppStorage("markdown-toc-visible") private var mdTOCVisible: Bool = true
     @StateObject private var mdSearch = MarkdownSearchController()
 
+    // Plain text (.txt/.log) viewer
+    @State private var isViewingText: Bool = false
+    @State private var originalTextURL: URL?
+    @State private var textFileContent: String = ""
+    @AppStorage("txt-font-name") private var txtFontName: String = "Menlo"
+    @AppStorage("txt-font-size") private var txtFontSize: Double = 13
+
+
     private var markdownTheme: MarkdownReaderTheme {
         MarkdownReaderTheme(rawValue: markdownThemeRaw) ?? .github
     }
@@ -283,7 +291,7 @@ struct ContentView: View {
     }
 
     private func handleShowFindCommand() {
-        if pdfDocument != nil || isViewingMarkdown {
+        if pdfDocument != nil || isViewingMarkdown || isViewingText {
             showSearch.toggle()
             if !showSearch {
                 searchText = ""
@@ -399,6 +407,24 @@ struct ContentView: View {
                 }
                 .frame(maxHeight: .infinity)
             }
+        } else if isViewingText {
+            VStack {
+                Image(systemName: "doc.plaintext")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text("\(textFileContent.split(separator: "\n", omittingEmptySubsequences: false).count) lines")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let url = originalTextURL {
+                    Text(url.lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxHeight: .infinity)
         } else {
             VStack {
                 Text("No PDF Open")
@@ -455,6 +481,15 @@ struct ContentView: View {
                         Text("Loading…").foregroundStyle(.secondary)
                     }
                 }
+                if showSearch {
+                    searchBar
+                }
+            }
+        } else if isViewingText {
+            ZStack {
+                MarkdownView(attributedString: textFileAttributed,
+                             anchors: [:],
+                             liveSearchText: $searchText)
                 if showSearch {
                     searchBar
                 }
@@ -538,6 +573,10 @@ struct ContentView: View {
 
         OpenWithMenu(fileURL: openWithSourceURL, fileKind: openWithFileKind)
 
+        if isViewingText {
+            textFontMenu
+        }
+
         if isViewingMarkdown {
             Button {
                 markdownMode = (markdownMode == .reader) ? .quick : .reader
@@ -600,6 +639,52 @@ struct ContentView: View {
             if !showSearch { searchText = "" }
         } label: { Image(systemName: "magnifyingglass") }
             .help("Search (Cmd+F)")
+    }
+
+    /// Quick font switcher for the plain-text viewer: a few sensible
+    /// families (monospace first) plus size up/down. Persisted, so the next
+    /// .txt opens the same way.
+    private static let txtFontChoices: [(label: String, name: String)] = [
+        ("Menlo (mono)", "Menlo"),
+        ("SF Mono", "SF Mono"),
+        ("Courier New (mono)", "Courier New"),
+        ("System (SF Pro)", ".AppleSystemUIFont"),
+        ("Helvetica Neue", "Helvetica Neue"),
+        ("Georgia", "Georgia"),
+        ("Times New Roman", "Times New Roman"),
+    ]
+
+    private var textFontMenu: some View {
+        Menu {
+            ForEach(Self.txtFontChoices, id: \.name) { choice in
+                Button {
+                    txtFontName = choice.name
+                } label: {
+                    HStack {
+                        Text(choice.label)
+                        if txtFontName == choice.name {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Bigger (\(Int(txtFontSize)) pt)") {
+                txtFontSize = min(txtFontSize + 1, 32)
+            }
+            .keyboardShortcut("+", modifiers: [.command, .option])
+            Button("Smaller") {
+                txtFontSize = max(txtFontSize - 1, 8)
+            }
+            .keyboardShortcut("-", modifiers: [.command, .option])
+            Button("Reset to Menlo 13") {
+                txtFontName = "Menlo"
+                txtFontSize = 13
+            }
+        } label: {
+            Image(systemName: "textformat")
+        }
+        .help("Text font: \(txtFontName) \(Int(txtFontSize)) pt")
     }
 
     @ViewBuilder
@@ -972,7 +1057,7 @@ struct ContentView: View {
     // MARK: - Search Bar
 
     private var searchPlaceholder: String {
-        if isViewingMarkdown { return "Find in document…" }
+        if isViewingMarkdown || isViewingText { return "Find in document…" }
         return "Search in PDF…"
     }
 
@@ -1078,10 +1163,11 @@ struct ContentView: View {
 
     private func openPDF() {
         let panel = NSOpenPanel()
-        var types: [UTType] = [.pdf]
+        var types: [UTType] = [.pdf, .plainText]
         if let emlType = UTType(filenameExtension: "eml") { types.append(emlType) }
         if let docxType = UTType(filenameExtension: "docx") { types.append(docxType) }
         if let mdType = UTType(filenameExtension: "md") { types.append(mdType) }
+        if let logType = UTType(filenameExtension: "log") { types.append(logType) }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -1164,8 +1250,15 @@ struct ContentView: View {
             markdownAnchors = [:]
             markdownTOC = []
             markdownStats = .empty
+            isViewingText = false
+            originalTextURL = nil
+            textFileContent = ""
             return
         }
+        // Cleared up front for every open; loadTextDocument re-sets its own.
+        isViewingText = false
+        originalTextURL = nil
+        textFileContent = ""
         switch url.pathExtension.lowercased() {
         case "eml":
             loadEMLDocument(from: url)
@@ -1173,8 +1266,67 @@ struct ContentView: View {
             loadDOCXDocument(from: url)
         case "md", "markdown":
             loadMarkdownDocument(from: url)
+        case "txt", "text", "log":
+            loadTextDocument(from: url)
         default:
             loadPDFDocument(from: url)
+        }
+    }
+
+    private func loadTextDocument(from url: URL) {
+        let content: String
+        if let utf8 = try? String(contentsOf: url, encoding: .utf8) {
+            content = utf8
+        } else if let latin1 = try? String(contentsOf: url, encoding: .isoLatin1) {
+            content = latin1
+        } else {
+            content = "Could not read \(url.lastPathComponent) as text."
+        }
+        pdfDocument = nil
+        totalPages = 0
+        currentPage = 0
+        documentVersion = 0
+        formFieldCount = 0
+        isViewingEML = false
+        emlAttachments = []
+        emlMessage = nil
+        originalEMLURL = nil
+        isViewingDOCX = false
+        originalDOCXURL = nil
+        docxTempPDFURL = nil
+        isViewingMarkdown = false
+        originalMarkdownURL = nil
+        markdownDocument = nil
+        markdownAttributed = nil
+        markdownAnchors = [:]
+        markdownTOC = []
+        markdownStats = .empty
+        isViewingText = true
+        originalTextURL = url
+        textFileContent = content
+    }
+
+    /// Attributed plain text in the user's chosen viewer font. Recomputed
+    /// when the font name/size settings change, which is what makes the
+    /// toolbar font menu take effect immediately.
+    private var textFileAttributed: NSAttributedString {
+        NSAttributedString(string: textFileContent, attributes: [
+            .font: textFileFont,
+            .foregroundColor: NSColor.textColor
+        ])
+    }
+
+    private var textFileFont: NSFont {
+        // "SF Mono" and the system font have no PostScript name NSFont(name:)
+        // can resolve; they need the dedicated constructors.
+        switch txtFontName {
+        case "SF Mono":
+            return .monospacedSystemFont(ofSize: txtFontSize, weight: .regular)
+        case ".AppleSystemUIFont":
+            return .systemFont(ofSize: txtFontSize)
+        default:
+            return NSFont(name: txtFontName, size: txtFontSize)
+                ?? .monospacedSystemFont(ofSize: txtFontSize, weight: .regular)
         }
     }
 
