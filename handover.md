@@ -1,10 +1,33 @@
-# MikePDFViewer Handover - July 2, 2026
+# MikePDFViewer Handover - July 10, 2026
 
-## Current State: v6.8.0 - Enhancement batch complete (7 features in one evening)
+## Current State: v6.11.1 - Three new viewers: TXT, Quick Look (PPTX/DOCX), HTML
 
-**BUILD STATUS:** v6.8.0 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's testing
+**BUILD STATUS:** v6.11.1 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's testing
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tags:** `before-thumbnail-fix-jul2` (v6.3.0), `before-v6.4-enhancements-jul2` (v6.3.1)
+**Latest safety tags:** `before-txt-pptx-jul10` (v6.8.0 start), `before-v6.4-enhancements-jul2`, `before-thumbnail-fix-jul2`
+
+### July 10 batch - v6.9.0 through v6.11.1 (new file type viewers)
+
+Michael asked for: .txt support (mono default, quick font change), a fast format-preserving DOCX and PPTX viewer, and an HTML viewer (mini browser). All native frameworks, no third-party dependencies.
+
+- **v6.9.0 TXT viewer.** .txt/.text/.log open in the same NSTextView used by MD Quick mode (reused `MarkdownView`, so Cmd+F live highlight works for free). Default Menlo 13. New toolbar "textformat" menu: 7 font choices (mono listed first), bigger/smaller (also Cmd+Option+Plus/Minus), reset. Persisted in `txt-font-name` / `txt-font-size`.
+- **v6.10.0 Quick Look viewer.** New `QuickLookFileView.swift` embeds `QLPreviewView` (the Finder Space-bar engine). .pptx/.ppt/.key open here instantly with native fidelity. **.docx now defaults to Quick Look too** (instant) instead of the slow NSAttributedString->HTML->WKWebView PDF conversion; a toolbar "doc.richtext" button runs the old Convert to PDF pipeline when search/annotate/print are needed. Quick Look mode has no Cmd+F (engine limitation).
+- **v6.11.0 HTML mini browser.** New `HTMLBrowserView.swift`: WKWebView + `HTMLBrowserController` (ObservableObject). Back/Forward/Reload/Home toolbar buttons; links (including target=_blank and external http) navigate inside the view. Sandbox already had network.client so web links work.
+- **v6.11.1** Info.plist document types added (plain text, PPTX/PPT, Keynote, HTML) so Finder "Open With" lists the app. Open panel and Recent files accept all new types.
+
+**Testing notes for Michael:**
+- Open a .txt: should be monospace; try the new "textformat" toolbar menu.
+- Open a .pptx: should appear instantly, slides scrollable, formatting intact.
+- Open a .docx: instant Quick Look; press the "doc.richtext" toolbar button to convert to PDF when you need annotation/search.
+- Open an .html: renders like Safari; click links, use back/forward arrows in toolbar.
+
+**Known limitations:** no Cmd+F inside Quick Look (pptx/docx quick view) - convert DOCX to PDF for search; HTML viewer has no Cmd+F yet either (can add via WKWebView.find later, same mechanic as MD Reader).
+
+---
+
+## Previous state (July 2, 2026): v6.8.0 - Enhancement batch (7 features in one evening)
+
+**Prior tags:** `before-thumbnail-fix-jul2` (v6.3.0), `before-v6.4-enhancements-jul2` (v6.3.1)
 
 ### July 2 evening batch - v6.4.0 through v6.8.0
 
