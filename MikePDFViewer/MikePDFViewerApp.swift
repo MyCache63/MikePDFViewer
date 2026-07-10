@@ -299,6 +299,9 @@ struct MikePDFViewerApp: App {
         if let docxType = UTType(filenameExtension: "docx") { types.append(docxType) }
         if let mdType = UTType(filenameExtension: "md") { types.append(mdType) }
         if let logType = UTType(filenameExtension: "log") { types.append(logType) }
+        if let pptxType = UTType(filenameExtension: "pptx") { types.append(pptxType) }
+        if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
+        if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {

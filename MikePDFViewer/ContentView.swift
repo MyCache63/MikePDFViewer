@@ -85,6 +85,10 @@ struct ContentView: View {
     @AppStorage("txt-font-name") private var txtFontName: String = "Menlo"
     @AppStorage("txt-font-size") private var txtFontSize: Double = 13
 
+    // Quick Look viewer (.pptx/.ppt, and instant default for .docx)
+    @State private var isViewingQuickLook: Bool = false
+    @State private var quickLookURL: URL?
+
 
     private var markdownTheme: MarkdownReaderTheme {
         MarkdownReaderTheme(rawValue: markdownThemeRaw) ?? .github
@@ -407,6 +411,24 @@ struct ContentView: View {
                 }
                 .frame(maxHeight: .infinity)
             }
+        } else if isViewingQuickLook {
+            VStack {
+                Image(systemName: "eye")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text("Quick Look")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let url = quickLookURL {
+                    Text(url.lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxHeight: .infinity)
         } else if isViewingText {
             VStack {
                 Image(systemName: "doc.plaintext")
@@ -494,6 +516,8 @@ struct ContentView: View {
                     searchBar
                 }
             }
+        } else if isViewingQuickLook, let qlURL = quickLookURL {
+            QuickLookFileView(url: qlURL)
         } else if isViewingEML {
             HStack(spacing: 0) {
                 pdfContent
@@ -575,6 +599,20 @@ struct ContentView: View {
 
         if isViewingText {
             textFontMenu
+        }
+
+        if isViewingQuickLook, let docxURL = originalDOCXURL {
+            Button {
+                loadDOCXDocument(from: docxURL)
+            } label: {
+                if isConvertingDOCX {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "doc.richtext")
+                }
+            }
+            .help("Convert to PDF (enables search, annotate, print; slower)")
+            .disabled(isConvertingDOCX)
         }
 
         if isViewingMarkdown {
@@ -1168,6 +1206,9 @@ struct ContentView: View {
         if let docxType = UTType(filenameExtension: "docx") { types.append(docxType) }
         if let mdType = UTType(filenameExtension: "md") { types.append(mdType) }
         if let logType = UTType(filenameExtension: "log") { types.append(logType) }
+        if let pptxType = UTType(filenameExtension: "pptx") { types.append(pptxType) }
+        if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
+        if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -1253,17 +1294,24 @@ struct ContentView: View {
             isViewingText = false
             originalTextURL = nil
             textFileContent = ""
+            isViewingQuickLook = false
+            quickLookURL = nil
             return
         }
-        // Cleared up front for every open; loadTextDocument re-sets its own.
+        // Cleared up front for every open; each loader re-sets its own.
         isViewingText = false
         originalTextURL = nil
         textFileContent = ""
+        isViewingQuickLook = false
+        quickLookURL = nil
         switch url.pathExtension.lowercased() {
         case "eml":
             loadEMLDocument(from: url)
-        case "docx":
-            loadDOCXDocument(from: url)
+        case "docx", "pptx", "ppt", "key":
+            // Instant, format-faithful Quick Look. DOCX keeps a toolbar
+            // button to run the slower convert-to-PDF pipeline when PDF
+            // features (annotate, print, search) are needed.
+            loadQuickLookDocument(from: url)
         case "md", "markdown":
             loadMarkdownDocument(from: url)
         case "txt", "text", "log":
@@ -1271,6 +1319,30 @@ struct ContentView: View {
         default:
             loadPDFDocument(from: url)
         }
+    }
+
+    private func loadQuickLookDocument(from url: URL) {
+        pdfDocument = nil
+        totalPages = 0
+        currentPage = 0
+        documentVersion = 0
+        formFieldCount = 0
+        isViewingEML = false
+        emlAttachments = []
+        emlMessage = nil
+        originalEMLURL = nil
+        isViewingDOCX = false
+        docxTempPDFURL = nil
+        originalDOCXURL = url.pathExtension.lowercased() == "docx" ? url : nil
+        isViewingMarkdown = false
+        originalMarkdownURL = nil
+        markdownDocument = nil
+        markdownAttributed = nil
+        markdownAnchors = [:]
+        markdownTOC = []
+        markdownStats = .empty
+        isViewingQuickLook = true
+        quickLookURL = url
     }
 
     private func loadTextDocument(from url: URL) {
@@ -1472,6 +1544,8 @@ struct ContentView: View {
                     originalEMLURL = nil
                     isViewingDOCX = true
                     docxTempPDFURL = tempURL
+                    isViewingQuickLook = false
+                    quickLookURL = nil
                     isViewingMarkdown = false
                     originalMarkdownURL = nil
                     markdownDocument = nil
