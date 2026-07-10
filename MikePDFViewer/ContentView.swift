@@ -89,6 +89,11 @@ struct ContentView: View {
     @State private var isViewingQuickLook: Bool = false
     @State private var quickLookURL: URL?
 
+    // HTML mini browser (.html/.htm)
+    @State private var isViewingHTML: Bool = false
+    @State private var originalHTMLURL: URL?
+    @StateObject private var htmlBrowser = HTMLBrowserController()
+
 
     private var markdownTheme: MarkdownReaderTheme {
         MarkdownReaderTheme(rawValue: markdownThemeRaw) ?? .github
@@ -411,6 +416,28 @@ struct ContentView: View {
                 }
                 .frame(maxHeight: .infinity)
             }
+        } else if isViewingHTML {
+            VStack {
+                Image(systemName: "globe")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                if !htmlBrowser.pageTitle.isEmpty {
+                    Text(htmlBrowser.pageTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
+                if let url = originalHTMLURL {
+                    Text(url.lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxHeight: .infinity)
         } else if isViewingQuickLook {
             VStack {
                 Image(systemName: "eye")
@@ -518,6 +545,8 @@ struct ContentView: View {
             }
         } else if isViewingQuickLook, let qlURL = quickLookURL {
             QuickLookFileView(url: qlURL)
+        } else if isViewingHTML {
+            HTMLBrowserView(controller: htmlBrowser)
         } else if isViewingEML {
             HStack(spacing: 0) {
                 pdfContent
@@ -599,6 +628,32 @@ struct ContentView: View {
 
         if isViewingText {
             textFontMenu
+        }
+
+        if isViewingHTML {
+            Button { htmlBrowser.goBack() } label: {
+                Image(systemName: "chevron.left")
+            }
+            .help("Back")
+            .disabled(!htmlBrowser.canGoBack)
+
+            Button { htmlBrowser.goForward() } label: {
+                Image(systemName: "chevron.right")
+            }
+            .help("Forward")
+            .disabled(!htmlBrowser.canGoForward)
+
+            Button { htmlBrowser.reload() } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .help("Reload")
+
+            Button {
+                if let url = originalHTMLURL { htmlBrowser.load(fileURL: url) }
+            } label: {
+                Image(systemName: "house")
+            }
+            .help("Back to the opened file")
         }
 
         if isViewingQuickLook, let docxURL = originalDOCXURL {
@@ -1209,6 +1264,7 @@ struct ContentView: View {
         if let pptxType = UTType(filenameExtension: "pptx") { types.append(pptxType) }
         if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
+        types.append(.html)
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -1296,6 +1352,8 @@ struct ContentView: View {
             textFileContent = ""
             isViewingQuickLook = false
             quickLookURL = nil
+            isViewingHTML = false
+            originalHTMLURL = nil
             return
         }
         // Cleared up front for every open; each loader re-sets its own.
@@ -1304,6 +1362,8 @@ struct ContentView: View {
         textFileContent = ""
         isViewingQuickLook = false
         quickLookURL = nil
+        isViewingHTML = false
+        originalHTMLURL = nil
         switch url.pathExtension.lowercased() {
         case "eml":
             loadEMLDocument(from: url)
@@ -1316,9 +1376,36 @@ struct ContentView: View {
             loadMarkdownDocument(from: url)
         case "txt", "text", "log":
             loadTextDocument(from: url)
+        case "html", "htm":
+            loadHTMLDocument(from: url)
         default:
             loadPDFDocument(from: url)
         }
+    }
+
+    private func loadHTMLDocument(from url: URL) {
+        pdfDocument = nil
+        totalPages = 0
+        currentPage = 0
+        documentVersion = 0
+        formFieldCount = 0
+        isViewingEML = false
+        emlAttachments = []
+        emlMessage = nil
+        originalEMLURL = nil
+        isViewingDOCX = false
+        originalDOCXURL = nil
+        docxTempPDFURL = nil
+        isViewingMarkdown = false
+        originalMarkdownURL = nil
+        markdownDocument = nil
+        markdownAttributed = nil
+        markdownAnchors = [:]
+        markdownTOC = []
+        markdownStats = .empty
+        isViewingHTML = true
+        originalHTMLURL = url
+        htmlBrowser.load(fileURL: url)
     }
 
     private func loadQuickLookDocument(from url: URL) {

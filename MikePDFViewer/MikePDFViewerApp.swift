@@ -302,6 +302,7 @@ struct MikePDFViewerApp: App {
         if let pptxType = UTType(filenameExtension: "pptx") { types.append(pptxType) }
         if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
+        types.append(.html)
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
