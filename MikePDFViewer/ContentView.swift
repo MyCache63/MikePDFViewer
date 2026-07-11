@@ -20,6 +20,14 @@ struct ContentView: View {
     @State private var makeSearchableProgress: Double = 0
     @State private var makeSearchableMessage: String?
     @State private var errorAlertMessage: String?
+
+    // Unsaved-changes tracking: set on any document mutation, cleared on
+    // load and successful save. Guards both open-another-file and app quit.
+    @State private var documentDirty = false
+    @State private var lastLoadedURL: URL?
+    @State private var pendingOpenURL: URL?
+    @State private var showDiscardChangesAlert = false
+    @State private var isRevertingOpen = false
     @State private var showGoToPage = false
     @State private var goToPageText: String = ""
     @State private var darkModeReading = false
@@ -169,6 +177,16 @@ struct ContentView: View {
             } message: {
                 Text(errorAlertMessage ?? "")
             }
+            .alert("Unsaved Changes", isPresented: $showDiscardChangesAlert) {
+                Button("Cancel", role: .cancel) { pendingOpenURL = nil }
+                Button("Discard and Open", role: .destructive) {
+                    documentDirty = false
+                    if let url = pendingOpenURL { pdfURL = url }
+                    pendingOpenURL = nil
+                }
+            } message: {
+                Text("The current document has unsaved edits (annotations, OCR, or page changes). Press Cancel and use Cmd+S to keep them, or discard them and open the new file.")
+            }
             .sheet(isPresented: $showExtractSheet) {
                 if let document = pdfDocument {
                     PageExtractView(document: document)
@@ -226,10 +244,16 @@ struct ContentView: View {
             ))
     }
 
-    private var viewWithNotifications: some View {
+    /// First half of the notification wiring, split from
+    /// `viewWithNotifications` so the type-checker can cope with the chain.
+    private var viewWithDocumentNotifications: some View {
         viewWithAlerts
             .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
                 documentVersion += 1
+                documentDirty = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentSaved)) { _ in
+                documentDirty = false
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfAnnotationEditingChanged)) { notification in
                 annotationEditingMode = notification.userInfo?["editing"] as? Bool ?? false
@@ -259,6 +283,10 @@ struct ContentView: View {
                     displayMode = mode
                 }
             }
+    }
+
+    private var viewWithNotifications: some View {
+        viewWithDocumentNotifications
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleBookmark)) { _ in
                 if pdfDocument != nil { bookmarkManager.toggleBookmark(for: currentPage) }
             }
@@ -292,6 +320,9 @@ struct ContentView: View {
                 onFindPrev: { handleFindPrevCommand() }
             ))
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
+            .onChange(of: documentDirty) { _, dirty in
+                AppDelegate.hasUnsavedChanges = dirty
+            }
             .onAppear { handleAppear() }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
     }
@@ -1005,6 +1036,7 @@ struct ContentView: View {
                     totalPages = newDoc.pageCount
                     currentPage = min(pageBefore, max(newDoc.pageCount - 1, 0))
                     documentVersion += 1
+                    documentDirty = true
                     makeSearchableMessage = "Added searchable text to \(result.ocrPageCount) page\(result.ocrPageCount == 1 ? "" : "s"). Cmd+F now works. Press Cmd+S to save."
                 }
             } catch {
@@ -1337,6 +1369,7 @@ struct ContentView: View {
         document.removePage(at: source)
         document.insert(page, at: destination)
         documentVersion += 1
+        documentDirty = true
 
         // Update current page to follow the moved page
         if currentPage == source {
@@ -1349,6 +1382,22 @@ struct ContentView: View {
     }
 
     private func loadDocument(from url: URL?) {
+        // Re-entry from the revert below: pdfURL was put back to the current
+        // document, nothing to load.
+        if isRevertingOpen {
+            isRevertingOpen = false
+            return
+        }
+        // Unsaved edits guard: don't silently replace a modified document.
+        if documentDirty, let url, url != lastLoadedURL {
+            pendingOpenURL = url
+            showDiscardChangesAlert = true
+            isRevertingOpen = true
+            pdfURL = lastLoadedURL
+            return
+        }
+        documentDirty = false
+        lastLoadedURL = url
         guard let url else {
             pdfDocument = nil
             totalPages = 0

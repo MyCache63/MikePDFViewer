@@ -39,10 +39,29 @@ extension FocusedValues {
     }
 }
 
+// MARK: - App Delegate (quit protection)
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Kept current by ContentView whenever its dirty flag changes.
+    static var hasUnsavedChanges = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard Self.hasUnsavedChanges else { return .terminateNow }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Unsaved Changes"
+        alert.informativeText = "The open document has unsaved edits (annotations, OCR, or page changes). Cancel and press Cmd+S to keep them, or quit and lose them."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Quit Anyway")
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+}
+
 // MARK: - App
 
 @main
 struct MikePDFViewerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var recentFiles = RecentFilesManager()
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @FocusedValue(\.pdfDocument) var focusedDocument
