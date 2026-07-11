@@ -234,6 +234,16 @@ struct MikePDFViewerApp: App {
             CommandGroup(after: .toolbar) {
                 Divider()
 
+                // Cmd+G belongs to Find Next per macOS convention, so Go to
+                // Page gets Preview's shortcut, Cmd+Option+G.
+                Button("Go to Page...") {
+                    NotificationCenter.default.post(name: .pdfGoToPage, object: nil)
+                }
+                .keyboardShortcut("g", modifiers: [.command, .option])
+                .disabled(focusedDocument == nil)
+
+                Divider()
+
                 Button("Zoom In") {
                     NotificationCenter.default.post(name: .pdfZoomIn, object: nil)
                 }

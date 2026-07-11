@@ -296,6 +296,12 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfMakeSearchable)) { _ in
                 makeSearchable()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfGoToPage)) { _ in
+                if totalPages > 0 {
+                    goToPageText = ""
+                    showGoToPage = true
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .pdfShowMerge)) { _ in
                 showMergeSheet = true
             }
@@ -942,7 +948,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Go to Page (Cmd+G)")
+            .help("Go to Page (Cmd+Option+G)")
             .popover(isPresented: $showGoToPage) {
                 goToPagePopover
             }
