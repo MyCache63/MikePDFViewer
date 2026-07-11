@@ -26,17 +26,38 @@ enum SearchableOCRService {
         let ocrPageCount: Int
     }
 
-    enum ServiceError: LocalizedError {
+    enum ServiceError: LocalizedError, Equatable {
         case noPages
         case alreadySearchable
         case contextFailed
+        case cancelled
 
         var errorDescription: String? {
             switch self {
             case .noPages: return "The document has no pages."
             case .alreadySearchable: return "Every page already has searchable text. Nothing to do."
             case .contextFailed: return "Could not create the output PDF."
+            case .cancelled: return "OCR was cancelled. The document is unchanged."
             }
+        }
+    }
+
+    /// Thread-safe cancellation token: the UI cancels from the main thread
+    /// while the OCR loop polls from its background queue.
+    final class CancelFlag {
+        private let lock = NSLock()
+        private var value = false
+
+        func cancel() {
+            lock.lock()
+            value = true
+            lock.unlock()
+        }
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
         }
     }
 
@@ -49,6 +70,7 @@ enum SearchableOCRService {
     /// as pages complete, from the calling thread.
     static func makeSearchable(
         document: PDFDocument,
+        cancelFlag: CancelFlag? = nil,
         progress: (Int, Int) -> Void
     ) throws -> OCRResult {
         let pageCount = document.pageCount
@@ -72,35 +94,44 @@ enum SearchableOCRService {
         progress(0, pageCount)
 
         for i in 0..<pageCount {
-            guard let page = document.page(at: i), let pageRef = page.pageRef else { continue }
-
-            let box = displayBox(for: pageRef)
-            var mediaBox = box
-            let boxData = Data(bytes: &mediaBox, count: MemoryLayout<CGRect>.size)
-            context.beginPDFPage([kCGPDFContextMediaBox: boxData] as CFDictionary)
-
-            // Visible layer: white background + original vector content,
-            // rotated/cropped exactly as displayed, then annotations.
-            let transform = pageRef.getDrawingTransform(
-                .cropBox, rect: box, rotate: 0, preserveAspectRatio: false
-            )
-            context.saveGState()
-            context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
-            context.fill(box)
-            context.concatenate(transform)
-            context.drawPDFPage(pageRef)
-            for annotation in page.annotations {
-                annotation.draw(with: .cropBox, in: context)
+            if cancelFlag?.isCancelled == true {
+                context.closePDF()
+                throw ServiceError.cancelled
             }
-            context.restoreGState()
+            // Per-page autoreleasepool: each 300-dpi raster is ~34 MB, and
+            // without a pool the autoreleased images for every page pile up
+            // until the whole loop finishes.
+            autoreleasepool {
+                guard let page = document.page(at: i), let pageRef = page.pageRef else { return }
 
-            if needsOCR[i], let raster = renderRaster(pageRef: pageRef, displayBox: box, transform: transform) {
-                let observations = (try? recognizeText(in: raster)) ?? []
-                if !observations.isEmpty { ocrPageCount += 1 }
-                drawInvisibleTextLayer(observations, mediaBox: box, into: context)
+                let box = displayBox(for: pageRef)
+                var mediaBox = box
+                let boxData = Data(bytes: &mediaBox, count: MemoryLayout<CGRect>.size)
+                context.beginPDFPage([kCGPDFContextMediaBox: boxData] as CFDictionary)
+
+                // Visible layer: white background + original vector content,
+                // rotated/cropped exactly as displayed, then annotations.
+                let transform = pageRef.getDrawingTransform(
+                    .cropBox, rect: box, rotate: 0, preserveAspectRatio: false
+                )
+                context.saveGState()
+                context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+                context.fill(box)
+                context.concatenate(transform)
+                context.drawPDFPage(pageRef)
+                for annotation in page.annotations {
+                    annotation.draw(with: .cropBox, in: context)
+                }
+                context.restoreGState()
+
+                if needsOCR[i], let raster = renderRaster(pageRef: pageRef, displayBox: box, transform: transform) {
+                    let observations = (try? recognizeText(in: raster)) ?? []
+                    if !observations.isEmpty { ocrPageCount += 1 }
+                    drawInvisibleTextLayer(observations, mediaBox: box, into: context)
+                }
+
+                context.endPDFPage()
             }
-
-            context.endPDFPage()
             progress(i + 1, pageCount)
         }
 

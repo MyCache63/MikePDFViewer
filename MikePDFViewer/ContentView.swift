@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showOCRSheet = false
     @State private var isMakingSearchable = false
     @State private var makeSearchableProgress: Double = 0
+    @State private var makeSearchableCancelFlag = SearchableOCRService.CancelFlag()
     @State private var makeSearchableMessage: String?
     @State private var errorAlertMessage: String?
 
@@ -1015,6 +1016,10 @@ struct ContentView: View {
             Text("Recognizing text on-device with Apple Vision…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button("Cancel") {
+                makeSearchableCancelFlag.cancel()
+            }
+            .keyboardShortcut(.cancelAction)
         }
         .padding(24)
         .interactiveDismissDisabled()
@@ -1024,10 +1029,12 @@ struct ContentView: View {
         guard let document = pdfDocument, !isMakingSearchable else { return }
         isMakingSearchable = true
         makeSearchableProgress = 0
+        let cancelFlag = SearchableOCRService.CancelFlag()
+        makeSearchableCancelFlag = cancelFlag
 
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try SearchableOCRService.makeSearchable(document: document) { done, total in
+                let result = try SearchableOCRService.makeSearchable(document: document, cancelFlag: cancelFlag) { done, total in
                     let fraction = Double(done) / Double(max(total, 1))
                     DispatchQueue.main.async { makeSearchableProgress = fraction }
                 }
@@ -1048,7 +1055,10 @@ struct ContentView: View {
             } catch {
                 DispatchQueue.main.async {
                     isMakingSearchable = false
-                    makeSearchableMessage = error.localizedDescription
+                    // A user-initiated cancel needs no follow-up alert.
+                    if (error as? SearchableOCRService.ServiceError) != .cancelled {
+                        makeSearchableMessage = error.localizedDescription
+                    }
                 }
             }
         }
