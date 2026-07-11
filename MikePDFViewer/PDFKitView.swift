@@ -19,6 +19,9 @@ extension Notification.Name {
     static let pdfToggleBookmark = Notification.Name("pdfToggleBookmark")
     static let pdfExtractPages = Notification.Name("pdfExtractPages")
     static let pdfMakeSearchable = Notification.Name("pdfMakeSearchable")
+    // Posted after a successful in-place save or Save As, so the host can
+    // clear its unsaved-changes flag.
+    static let pdfDocumentSaved = Notification.Name("pdfDocumentSaved")
     static let pdfOpenFile = Notification.Name("pdfOpenFile")
     static let pdfToggleSplitView = Notification.Name("pdfToggleSplitView")
     static let pdfStartPresentation = Notification.Name("pdfStartPresentation")

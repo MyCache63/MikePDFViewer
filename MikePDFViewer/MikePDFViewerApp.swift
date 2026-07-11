@@ -313,16 +313,37 @@ struct MikePDFViewerApp: App {
 
     private func saveDocument() {
         guard let document = focusedDocument, let url = focusedURL else { return }
-        document.write(to: url)
+        // In-place save is only safe when the opened file really is a PDF.
+        // For converted sources (.docx/.eml/.md) the in-memory document is a
+        // rendered PDF but the URL still points at the ORIGINAL file; writing
+        // there would overwrite a Word doc / email with PDF bytes.
+        guard url.pathExtension.lowercased() == "pdf" else {
+            saveDocumentAs()
+            return
+        }
+        writeDocument(document, to: url)
     }
 
     private func saveDocumentAs() {
         guard let document = focusedDocument else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = focusedURL?.lastPathComponent ?? "Untitled.pdf"
+        let stem = focusedURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
+        panel.nameFieldStringValue = stem + ".pdf"
         if panel.runModal() == .OK, let url = panel.url {
-            document.write(to: url)
+            writeDocument(document, to: url)
+        }
+    }
+
+    private func writeDocument(_ document: PDFDocument, to url: URL) {
+        if document.write(to: url) {
+            NotificationCenter.default.post(name: .pdfDocumentSaved, object: nil)
+        } else {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Save Failed"
+            alert.informativeText = "Could not write to \(url.path). Check that the location is writable and the disk has space, then try Save As."
+            alert.runModal()
         }
     }
 

@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var isMakingSearchable = false
     @State private var makeSearchableProgress: Double = 0
     @State private var makeSearchableMessage: String?
+    @State private var errorAlertMessage: String?
     @State private var showGoToPage = false
     @State private var goToPageText: String = ""
     @State private var darkModeReading = false
@@ -162,6 +163,11 @@ struct ContentView: View {
                 Button("OK") { makeSearchableMessage = nil }
             } message: {
                 Text(makeSearchableMessage ?? "")
+            }
+            .alert("Problem", isPresented: errorAlertShown) {
+                Button("OK") { errorAlertMessage = nil }
+            } message: {
+                Text(errorAlertMessage ?? "")
             }
             .sheet(isPresented: $showExtractSheet) {
                 if let document = pdfDocument {
@@ -956,6 +962,13 @@ struct ContentView: View {
         )
     }
 
+    private var errorAlertShown: Binding<Bool> {
+        Binding(
+            get: { errorAlertMessage != nil },
+            set: { if !$0 { errorAlertMessage = nil } }
+        )
+    }
+
     private var makeSearchableProgressSheet: some View {
         VStack(spacing: 12) {
             Text("Making PDF Searchable")
@@ -1277,9 +1290,16 @@ struct ContentView: View {
         guard let document = pdfDocument else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = pdfURL?.lastPathComponent ?? "Untitled.pdf"
+        // Always suggest a .pdf name; the source may be .docx/.eml/.md whose
+        // extension must not be reused for PDF bytes.
+        let stem = pdfURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
+        panel.nameFieldStringValue = stem + ".pdf"
         if panel.runModal() == .OK, let url = panel.url {
-            document.write(to: url)
+            if document.write(to: url) {
+                NotificationCenter.default.post(name: .pdfDocumentSaved, object: nil)
+            } else {
+                errorAlertMessage = "Could not write to \(url.path). Check that the location is writable and the disk has space."
+            }
         }
     }
 
