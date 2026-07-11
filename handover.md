@@ -1,10 +1,26 @@
 # MikePDFViewer Handover - July 10, 2026
 
-## Current State: v6.11.1 - Three new viewers: TXT, Quick Look (PPTX/DOCX), HTML
+## Current State: v6.12.4 - Safety release (data-loss fixes from the full evaluation)
 
-**BUILD STATUS:** v6.11.1 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's testing
+**BUILD STATUS:** v6.12.4 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's testing
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tags:** `before-txt-pptx-jul10` (v6.8.0 start), `before-v6.4-enhancements-jul2`, `before-thumbnail-fix-jul2`
+**Latest safety tags:** `before-v6.12-safety-jul10` (v6.11.1 start), `before-txt-pptx-jul10`, `before-v6.4-enhancements-jul2`
+
+### July 10 evening - v6.12 safety release
+
+Full evaluation (two audit agents + usage review) is in `MikePDFViewer_FullEvaluation_v01.0.0_Jul10.md`; Michael said GO on the v6.12 safety slice. Shipped:
+
+- **v6.12.0 Cmd+S corruption fix.** Save wrote the in-memory PDF to `pdfURL`, which for converted .docx/.eml/.md still points at the ORIGINAL source file, silently replacing a Word doc or email with PDF bytes. Save now writes in place only when the opened file is a real .pdf; otherwise it routes to Save As with a `.pdf`-suffixed name. All `document.write` results are checked and failures alert (previously silent).
+- **v6.12.1 Unsaved-changes protection.** New `documentDirty` flag: set by `.pdfDocumentModified` (annotations, rotate, redact, page delete), `movePage`, and Make Searchable; cleared on document load and on `.pdfDocumentSaved` (new notification posted by both save paths). Opening another file while dirty shows Discard-and-Open / Cancel; quitting shows Quit Anyway / Cancel via a new `AppDelegate` (`applicationShouldTerminate`). Note: closing the WINDOW (red button) is still unguarded; quit and open-file are covered.
+- **v6.12.2 Errors are visible.** DOCX/EML/MD conversion failures and unreadable PDFs now show an alert with the filename and reason (previously stored in never-displayed state vars).
+- **v6.12.3 Go to Page fixed.** Cmd+G was shadowed by Find Next (which is inert for PDFs until find-cycling ships in v6.13). New View > Go to Page... menu item with Cmd+Option+G (Preview's shortcut); toolbar tooltip corrected.
+- **v6.12.4 Cancellable OCR.** Make Searchable progress sheet has a Cancel button (Esc works too); `SearchableOCRService` takes a thread-safe `CancelFlag` polled between pages, throws `.cancelled`, document untouched. Also added per-page `autoreleasepool` so 300-dpi rasters don't accumulate across long scans (audit finding M3). OCR re-verified headless after refactor: scan page 0 -> 388 chars, findString works, cancel throws correctly.
+
+**Still open from the evaluation (next slices):** v6.13 find-next/prev in PDFs + Cmd+F in HTML + print outside PDF mode + large-txt performance; v6.14 multi-window/tabs + remember-last-page + drag-drop-to-open + thumbnail cache limits + PDFDocument thread-safety. See the evaluation doc for the full ranked list.
+
+---
+
+## Previous state (July 10, earlier): v6.11.1 - Three new viewers: TXT, Quick Look (PPTX/DOCX), HTML
 
 ### July 10 batch - v6.9.0 through v6.11.1 (new file type viewers)
 
