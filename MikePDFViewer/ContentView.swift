@@ -1647,6 +1647,7 @@ struct ContentView: View {
             markdownAnchors = [:]
             markdownTOC = []
             markdownStats = .empty
+            errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 
@@ -1676,6 +1677,9 @@ struct ContentView: View {
                 bookmarkManager.load(for: url)
                 if isLocked {
                     showPasswordSheet = true
+                }
+                if doc == nil {
+                    errorAlertMessage = "Could not open \(url.lastPathComponent). The file may be missing, unreadable, or not a valid PDF."
                 }
             }
         }
@@ -1713,6 +1717,7 @@ struct ContentView: View {
             } catch {
                 await MainActor.run {
                     docxConversionError = error.localizedDescription
+                    errorAlertMessage = "Could not convert \(url.lastPathComponent) to PDF: \(error.localizedDescription)"
                     isConvertingDOCX = false
                     pdfDocument = nil
                     totalPages = 0
@@ -1753,6 +1758,7 @@ struct ContentView: View {
             } catch {
                 await MainActor.run {
                     emlConversionError = error.localizedDescription
+                    errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
                     isConvertingEML = false
                     pdfDocument = nil
                     totalPages = 0
