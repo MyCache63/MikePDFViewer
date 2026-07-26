@@ -5,6 +5,10 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @State var pdfURL: URL?
     @EnvironmentObject var recentFiles: RecentFilesManager
+    /// Only the key window should react to app-wide menu notifications
+    /// (Open, zoom, find, etc.). Without this, every open window loads the
+    /// same file and shares edits - the multi-window stale-artifact bug.
+    @Environment(\.controlActiveState) private var controlActiveState
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @State private var pdfDocument: PDFDocument?
     @State private var currentPage: Int = 0
@@ -29,6 +33,10 @@ struct ContentView: View {
     @State private var pendingOpenURL: URL?
     @State private var showDiscardChangesAlert = false
     @State private var isRevertingOpen = false
+    /// Incremented on every open attempt; async completions that finish after
+    /// a newer open are discarded so a slow load cannot overwrite a fast one.
+    @State private var loadGeneration: UInt64 = 0
+    @State private var isLoadingDocument = false
     @State private var showGoToPage = false
     @State private var goToPageText: String = ""
     @State private var darkModeReading = false
@@ -137,6 +145,12 @@ struct ContentView: View {
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
+
+    /// True when this scene is the key window. Menu commands post globally;
+    /// only the key scene should apply them.
+    private var isKeyScene: Bool {
+        controlActiveState == .key
     }
 
     /// URL to use for "Open With" actions — always the user-facing source, not a
@@ -249,14 +263,31 @@ struct ContentView: View {
     /// `viewWithNotifications` so the type-checker can cope with the chain.
     private var viewWithDocumentNotifications: some View {
         viewWithAlerts
-            .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentModified)) { notification in
+                // Prefer document identity (posts now carry the PDFDocument);
+                // fall back to key-window for older nil-object posts.
+                if let doc = notification.object as? PDFDocument {
+                    guard doc === pdfDocument else { return }
+                } else {
+                    guard isKeyScene else { return }
+                }
                 documentVersion += 1
                 documentDirty = true
             }
-            .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentSaved)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .pdfDocumentSaved)) { notification in
+                if let doc = notification.object as? PDFDocument {
+                    guard doc === pdfDocument else { return }
+                } else {
+                    guard isKeyScene else { return }
+                }
                 documentDirty = false
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfAnnotationEditingChanged)) { notification in
+                if let doc = notification.object as? PDFDocument {
+                    guard doc === pdfDocument else { return }
+                } else {
+                    guard isKeyScene else { return }
+                }
                 annotationEditingMode = notification.userInfo?["editing"] as? Bool ?? false
                 editingAnnotationType = notification.userInfo?["type"] as? String ?? ""
                 if annotationEditingMode {
@@ -276,9 +307,11 @@ struct ContentView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleDarkMode)) { _ in
+                guard isKeyScene else { return }
                 darkModeReading.toggle()
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfSetDisplayMode)) { notification in
+                guard isKeyScene else { return }
                 if let rawValue = notification.userInfo?["mode"] as? Int,
                    let mode = PDFDisplayMode(rawValue: rawValue) {
                     displayMode = mode
@@ -289,46 +322,62 @@ struct ContentView: View {
     private var viewWithNotifications: some View {
         viewWithDocumentNotifications
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleBookmark)) { _ in
+                guard isKeyScene else { return }
                 if pdfDocument != nil { bookmarkManager.toggleBookmark(for: currentPage) }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfExtractPages)) { _ in
+                guard isKeyScene else { return }
                 if pdfDocument != nil { showExtractSheet = true }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfMakeSearchable)) { _ in
+                guard isKeyScene else { return }
                 makeSearchable()
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfGoToPage)) { _ in
+                guard isKeyScene else { return }
                 if totalPages > 0 {
                     goToPageText = ""
                     showGoToPage = true
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfShowMerge)) { _ in
+                guard isKeyScene else { return }
                 showMergeSheet = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfOpenFile)) { notification in
+                // Critical: Open / Recent must not replace every window's document.
+                guard isKeyScene else { return }
                 if let url = notification.userInfo?["url"] as? URL {
                     recentFiles.add(url)
                     pdfURL = url
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleSplitView)) { _ in
+                guard isKeyScene else { return }
                 if pdfDocument != nil {
                     showSplitView.toggle()
                     if showSplitView { splitCurrentPage = currentPage }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
+                guard isKeyScene else { return }
                 if pdfDocument != nil { showPresentation = true }
             }
             .modifier(FindCommandsListener(
-                onShowFind: { handleShowFindCommand() },
-                onFindNext: { handleFindNextCommand() },
-                onFindPrev: { handleFindPrevCommand() }
+                onShowFind: { guard isKeyScene else { return }; handleShowFindCommand() },
+                onFindNext: { guard isKeyScene else { return }; handleFindNextCommand() },
+                onFindPrev: { guard isKeyScene else { return }; handleFindPrevCommand() }
             ))
             .onChange(of: pdfURL) { _, newURL in loadDocument(from: newURL) }
             .onChange(of: documentDirty) { _, dirty in
-                AppDelegate.hasUnsavedChanges = dirty
+                // Track unsaved state across windows: set true if this window
+                // is dirty; only clear the app flag when this key window saves
+                // and no other path re-sets it. Best-effort for multi-window.
+                if dirty {
+                    AppDelegate.hasUnsavedChanges = true
+                } else if isKeyScene {
+                    AppDelegate.hasUnsavedChanges = false
+                }
             }
             .onAppear { handleAppear() }
             .onOpenURL { url in recentFiles.add(url); pdfURL = url }
@@ -431,6 +480,9 @@ struct ContentView: View {
                     deletePages(pageIndices)
                 }
             )
+            // Force a full sidebar identity reset when the PDFDocument instance
+            // changes so SwiftUI does not reuse page-row @State (old thumbnails).
+            .id(ObjectIdentifier(document))
         } else if isViewingMarkdown {
             if markdownMode == .reader && mdTOCVisible {
                 MarkdownTOCSidebar(
@@ -631,6 +683,19 @@ struct ContentView: View {
                     darkMode: darkModeReading,
                     displayMode: displayMode
                 )
+                .id(ObjectIdentifier(document))
+            } else if isLoadingDocument {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Loading…")
+                        .foregroundStyle(.secondary)
+                    if let name = pdfURL?.lastPathComponent {
+                        Text(name)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 emptyState
             }
@@ -1031,6 +1096,8 @@ struct ContentView: View {
         makeSearchableProgress = 0
         let cancelFlag = SearchableOCRService.CancelFlag()
         makeSearchableCancelFlag = cancelFlag
+        let sourceID = ObjectIdentifier(document)
+        let generationAtStart = loadGeneration
 
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -1040,6 +1107,10 @@ struct ContentView: View {
                 }
                 DispatchQueue.main.async {
                     isMakingSearchable = false
+                    // User opened another file while OCR ran - drop the result.
+                    guard generationAtStart == loadGeneration,
+                          let current = pdfDocument,
+                          ObjectIdentifier(current) == sourceID else { return }
                     guard let newDoc = PDFDocument(data: result.data) else {
                         makeSearchableMessage = "OCR finished but the rebuilt PDF could not be loaded. The original document is unchanged."
                         return
@@ -1344,7 +1415,7 @@ struct ContentView: View {
         panel.nameFieldStringValue = stem + ".pdf"
         if panel.runModal() == .OK, let url = panel.url {
             if document.write(to: url) {
-                NotificationCenter.default.post(name: .pdfDocumentSaved, object: nil)
+                NotificationCenter.default.post(name: .pdfDocumentSaved, object: document)
             } else {
                 errorAlertMessage = "Could not write to \(url.path). Check that the location is writable and the disk has space."
             }
@@ -1372,7 +1443,8 @@ struct ContentView: View {
             currentPage = max(0, totalPages - 1)
         }
         documentVersion += 1
-        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        documentDirty = true
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: document)
     }
 
     private func movePage(from source: Int, to destination: Int) {
@@ -1414,66 +1486,56 @@ struct ContentView: View {
         }
         documentDirty = false
         lastLoadedURL = url
+
+        // Invalidate any in-flight async load from a previous open.
+        loadGeneration &+= 1
+        let generation = loadGeneration
+
         guard let url else {
-            pdfDocument = nil
-            totalPages = 0
-            currentPage = 0
-            isViewingEML = false
-            emlAttachments = []
-            emlMessage = nil
-            originalEMLURL = nil
-            isViewingDOCX = false
-            originalDOCXURL = nil
-            docxTempPDFURL = nil
-            isViewingMarkdown = false
-            originalMarkdownURL = nil
-            markdownDocument = nil
-            markdownAttributed = nil
-            markdownAnchors = [:]
-            markdownTOC = []
-            markdownStats = .empty
-            isViewingText = false
-            originalTextURL = nil
-            textFileContent = ""
-            isViewingQuickLook = false
-            quickLookURL = nil
-            isViewingHTML = false
-            originalHTMLURL = nil
+            clearAllViewerState()
+            isLoadingDocument = false
             return
         }
-        // Cleared up front for every open; each loader re-sets its own.
-        isViewingText = false
-        originalTextURL = nil
-        textFileContent = ""
-        isViewingQuickLook = false
-        quickLookURL = nil
-        isViewingHTML = false
-        originalHTMLURL = nil
+
+        // Drop the previous document immediately so title/content cannot show
+        // a mix of old pages and a new filename while the new file loads.
+        clearAllViewerState()
+        isLoadingDocument = true
+        bookmarkManager.load(for: nil)
+
         switch url.pathExtension.lowercased() {
         case "eml":
-            loadEMLDocument(from: url)
+            loadEMLDocument(from: url, generation: generation)
         case "docx", "pptx", "ppt", "key":
             // Instant, format-faithful Quick Look. DOCX keeps a toolbar
             // button to run the slower convert-to-PDF pipeline when PDF
             // features (annotate, print, search) are needed.
-            loadQuickLookDocument(from: url)
+            loadQuickLookDocument(from: url, generation: generation)
         case "md", "markdown":
-            loadMarkdownDocument(from: url)
+            loadMarkdownDocument(from: url, generation: generation)
         case "txt", "text", "log":
-            loadTextDocument(from: url)
+            loadTextDocument(from: url, generation: generation)
         case "html", "htm":
-            loadHTMLDocument(from: url)
+            loadHTMLDocument(from: url, generation: generation)
         default:
-            loadPDFDocument(from: url)
+            loadPDFDocument(from: url, generation: generation)
         }
     }
 
-    private func loadHTMLDocument(from url: URL) {
+    /// Wipes every mode flag and document binding. Call at the start of every
+    /// open so leftovers from the previous file cannot remain on screen.
+    private func clearAllViewerState() {
         pdfDocument = nil
         totalPages = 0
         currentPage = 0
         documentVersion = 0
         formFieldCount = 0
+        searchText = ""
+        debouncedSearchText = ""
+        showSearch = false
+        showSplitView = false
+        showAnnotationBar = false
+        annotationEditingMode = false
         isViewingEML = false
         emlAttachments = []
         emlMessage = nil
@@ -1488,36 +1550,42 @@ struct ContentView: View {
         markdownAnchors = [:]
         markdownTOC = []
         markdownStats = .empty
+        pendingMDAnchor = nil
+        mdSearch.clear()
+        isViewingText = false
+        originalTextURL = nil
+        textFileContent = ""
+        isViewingQuickLook = false
+        quickLookURL = nil
+        isViewingHTML = false
+        originalHTMLURL = nil
+    }
+
+    /// Returns false (and skips applying results) when a newer open superseded
+    /// this load. Call on the main actor at the start of every async completion.
+    @discardableResult
+    private func acceptLoadIfCurrent(generation: UInt64, url: URL) -> Bool {
+        generation == loadGeneration && pdfURL == url
+    }
+
+    private func loadHTMLDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
         isViewingHTML = true
         originalHTMLURL = url
         htmlBrowser.load(fileURL: url)
+        isLoadingDocument = false
     }
 
-    private func loadQuickLookDocument(from url: URL) {
-        pdfDocument = nil
-        totalPages = 0
-        currentPage = 0
-        documentVersion = 0
-        formFieldCount = 0
-        isViewingEML = false
-        emlAttachments = []
-        emlMessage = nil
-        originalEMLURL = nil
-        isViewingDOCX = false
-        docxTempPDFURL = nil
+    private func loadQuickLookDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
         originalDOCXURL = url.pathExtension.lowercased() == "docx" ? url : nil
-        isViewingMarkdown = false
-        originalMarkdownURL = nil
-        markdownDocument = nil
-        markdownAttributed = nil
-        markdownAnchors = [:]
-        markdownTOC = []
-        markdownStats = .empty
         isViewingQuickLook = true
         quickLookURL = url
+        isLoadingDocument = false
     }
 
-    private func loadTextDocument(from url: URL) {
+    private func loadTextDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
         let content: String
         if let utf8 = try? String(contentsOf: url, encoding: .utf8) {
             content = utf8
@@ -1526,28 +1594,10 @@ struct ContentView: View {
         } else {
             content = "Could not read \(url.lastPathComponent) as text."
         }
-        pdfDocument = nil
-        totalPages = 0
-        currentPage = 0
-        documentVersion = 0
-        formFieldCount = 0
-        isViewingEML = false
-        emlAttachments = []
-        emlMessage = nil
-        originalEMLURL = nil
-        isViewingDOCX = false
-        originalDOCXURL = nil
-        docxTempPDFURL = nil
-        isViewingMarkdown = false
-        originalMarkdownURL = nil
-        markdownDocument = nil
-        markdownAttributed = nil
-        markdownAnchors = [:]
-        markdownTOC = []
-        markdownStats = .empty
         isViewingText = true
         originalTextURL = url
         textFileContent = content
+        isLoadingDocument = false
     }
 
     /// Attributed plain text in the user's chosen viewer font. Recomputed
@@ -1577,6 +1627,7 @@ struct ContentView: View {
     private func renderMarkdownAsPDF() {
         guard let doc = markdownDocument, let url = originalMarkdownURL else { return }
         isRenderingMarkdownPDF = true
+        let generationAtStart = loadGeneration
         Task {
             do {
                 let (pdfDoc, tempURL) = try await MarkdownToPDFConverter.convert(
@@ -1586,6 +1637,10 @@ struct ContentView: View {
                     typography: markdownTypography
                 )
                 await MainActor.run {
+                    isRenderingMarkdownPDF = false
+                    // Another file was opened while rendering - discard.
+                    guard generationAtStart == loadGeneration,
+                          originalMarkdownURL == url || pdfURL == url else { return }
                     pdfDocument = pdfDoc
                     totalPages = pdfDoc.pageCount
                     currentPage = 0
@@ -1597,7 +1652,6 @@ struct ContentView: View {
                     markdownAnchors = [:]
                     renderedPDFTempURL = tempURL
                     pendingRenderedSourceURL = url
-                    isRenderingMarkdownPDF = false
                     showSaveRenderedPDFPrompt = true
                 }
             } catch {
@@ -1631,66 +1685,42 @@ struct ContentView: View {
         pendingRenderedSourceURL = nil
     }
 
-    private func loadMarkdownDocument(from url: URL) {
+    private func loadMarkdownDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
         do {
             let doc = try MarkdownDocument(url: url)
             let (styled, anchors) = doc.styledAttributedStringWithAnchors()
             let (_, toc) = MarkdownToHTML.render(doc.source)
+            guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
             markdownTOC = toc
             markdownStats = ReadingStats(source: doc.source)
-            pdfDocument = nil
-            totalPages = 0
-            currentPage = 0
-            documentVersion = 0
-            formFieldCount = 0
-            isViewingEML = false
-            emlAttachments = []
-            emlMessage = nil
-            originalEMLURL = nil
-            isViewingDOCX = false
-            originalDOCXURL = nil
-            docxTempPDFURL = nil
             isViewingMarkdown = true
             originalMarkdownURL = url
             markdownDocument = doc
             markdownAttributed = styled
             markdownAnchors = anchors
+            isLoadingDocument = false
         } catch {
-            isViewingMarkdown = false
-            originalMarkdownURL = nil
-            markdownDocument = nil
-            markdownAttributed = nil
-            markdownAnchors = [:]
-            markdownTOC = []
-            markdownStats = .empty
+            guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+            isLoadingDocument = false
             errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 
-    private func loadPDFDocument(from url: URL) {
+    private func loadPDFDocument(from url: URL, generation: UInt64) {
         DispatchQueue.global(qos: .userInitiated).async {
             let doc = PDFDocument(url: url)
             let isLocked = doc?.isLocked ?? false
             let fields = isLocked ? 0 : Self.countFormFields(doc)
             DispatchQueue.main.async {
+                guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
                 pdfDocument = doc
                 totalPages = isLocked ? 0 : (doc?.pageCount ?? 0)
                 currentPage = 0
                 documentVersion = 0
                 formFieldCount = fields
-                isViewingEML = false
-                emlAttachments = []
-                emlMessage = nil
-                originalEMLURL = nil
-                isViewingDOCX = false
-                originalDOCXURL = nil
-                docxTempPDFURL = nil
-                isViewingMarkdown = false
-                originalMarkdownURL = nil
-                markdownDocument = nil
-                markdownAttributed = nil
-                markdownAnchors = [:]
                 bookmarkManager.load(for: url)
+                isLoadingDocument = false
                 if isLocked {
                     showPasswordSheet = true
                 }
@@ -1702,47 +1732,66 @@ struct ContentView: View {
     }
 
     private func loadDOCXDocument(from url: URL) {
+        // Called from the "Convert to PDF" toolbar while already viewing the
+        // file via Quick Look. Bump generation so a concurrent Open cannot
+        // race this conversion onto the wrong window state.
+        loadGeneration &+= 1
+        let generation = loadGeneration
         isConvertingDOCX = true
         docxConversionError = nil
         originalDOCXURL = url
+        isLoadingDocument = true
+        // Keep Quick Look up until conversion finishes so the user is not
+        // left on an empty pane for long DOCX converts.
         Task {
             do {
                 let (doc, tempURL) = try await DOCXToPDFConverter.convert(url: url)
                 await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: pdfURL ?? url) else {
+                        isConvertingDOCX = false
+                        return
+                    }
+                    // Prefer the live pdfURL if still this DOCX; fall back to
+                    // the conversion source URL when pdfURL still points here.
+                    let stillThisFile = (pdfURL == url) || (originalDOCXURL == url)
+                    guard stillThisFile else {
+                        isConvertingDOCX = false
+                        isLoadingDocument = false
+                        return
+                    }
                     pdfDocument = doc
                     totalPages = doc.pageCount
                     currentPage = 0
                     documentVersion = 0
                     formFieldCount = 0
-                    isViewingEML = false
-                    emlAttachments = []
-                    emlMessage = nil
-                    originalEMLURL = nil
                     isViewingDOCX = true
                     docxTempPDFURL = tempURL
                     isViewingQuickLook = false
                     quickLookURL = nil
                     isViewingMarkdown = false
-                    originalMarkdownURL = nil
-                    markdownDocument = nil
-                    markdownAttributed = nil
-                    markdownAnchors = [:]
+                    isViewingEML = false
+                    isViewingText = false
+                    isViewingHTML = false
                     bookmarkManager.load(for: url)
                     isConvertingDOCX = false
+                    isLoadingDocument = false
                 }
             } catch {
                 await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: pdfURL ?? url) else {
+                        isConvertingDOCX = false
+                        return
+                    }
                     docxConversionError = error.localizedDescription
                     errorAlertMessage = "Could not convert \(url.lastPathComponent) to PDF: \(error.localizedDescription)"
                     isConvertingDOCX = false
-                    pdfDocument = nil
-                    totalPages = 0
+                    isLoadingDocument = false
                 }
             }
         }
     }
 
-    private func loadEMLDocument(from url: URL) {
+    private func loadEMLDocument(from url: URL, generation: UInt64) {
         isConvertingEML = true
         emlConversionError = nil
         originalEMLURL = url
@@ -1752,6 +1801,10 @@ struct ContentView: View {
                 let message = try EMLParser.parse(data: data)
                 let doc = try await EMLToPDFConverter.convert(message, loadExternalImages: loadExternalImages)
                 await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else {
+                        isConvertingEML = false
+                        return
+                    }
                     pdfDocument = doc
                     totalPages = doc.pageCount
                     currentPage = 0
@@ -1760,22 +1813,21 @@ struct ContentView: View {
                     isViewingEML = true
                     emlMessage = message
                     emlAttachments = message.attachments
-                    isViewingDOCX = false
-                    originalDOCXURL = nil
-                    docxTempPDFURL = nil
-                    isViewingMarkdown = false
-                    originalMarkdownURL = nil
-                    markdownDocument = nil
-                    markdownAttributed = nil
-                    markdownAnchors = [:]
+                    originalEMLURL = url
                     bookmarkManager.load(for: url)
                     isConvertingEML = false
+                    isLoadingDocument = false
                 }
             } catch {
                 await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else {
+                        isConvertingEML = false
+                        return
+                    }
                     emlConversionError = error.localizedDescription
                     errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
                     isConvertingEML = false
+                    isLoadingDocument = false
                     pdfDocument = nil
                     totalPages = 0
                 }
@@ -1785,7 +1837,13 @@ struct ContentView: View {
 
     private func reloadEML() {
         guard let url = originalEMLURL else { return }
-        loadEMLDocument(from: url)
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        // Keep pdfURL pointing at the EML; clear PDF surface then reconvert.
+        pdfDocument = nil
+        totalPages = 0
+        isLoadingDocument = true
+        loadEMLDocument(from: url, generation: generation)
     }
 
     private static func countFormFields(_ document: PDFDocument?) -> Int {

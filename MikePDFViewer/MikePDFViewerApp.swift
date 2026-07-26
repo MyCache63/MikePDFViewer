@@ -366,7 +366,7 @@ struct MikePDFViewerApp: App {
 
     private func writeDocument(_ document: PDFDocument, to url: URL) {
         if document.write(to: url) {
-            NotificationCenter.default.post(name: .pdfDocumentSaved, object: nil)
+            NotificationCenter.default.post(name: .pdfDocumentSaved, object: document)
         } else {
             let alert = NSAlert()
             alert.alertStyle = .critical

@@ -1,10 +1,34 @@
-# MikePDFViewer Handover - July 10, 2026
+# MikePDFViewer Handover - July 26, 2026
 
-## Current State: v6.12.4 - Safety release (data-loss fixes from the full evaluation)
+## Current State: v6.12.5 - Stale document artifact fixes
 
-**BUILD STATUS:** v6.12.4 builds (kit + Xcode), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's testing
+**BUILD STATUS:** v6.12.5 builds (Xcode Debug + Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tags:** `before-v6.12-safety-jul10` (v6.11.1 start), `before-txt-pptx-jul10`, `before-v6.4-enhancements-jul2`
+**Latest safety tags:** `before-stale-doc-artifacts-jul26` (v6.12.4 start), `before-v6.12-safety-jul10`, `before-txt-pptx-jul10`
+**Diagnosis write-up:** `BugReport_StaleDocumentArtifacts_v01_Jul26.md`
+
+### July 26 - v6.12.5 Fix stale artifacts from the previous document
+
+Michael reported opening a file often showed leftovers from the last one (title, left thumbnails, main view), worse with more docs open. Three stacked bugs; all fixed in this patch:
+
+1. **Key-window scoping for Open and menu commands.** `.pdfOpenFile` (File > Open, Recent, EML attachments) and other app-wide notifications were received by every `ContentView` / `PDFKitView`. Only the key window now applies them. Document-modified/saved/annotation-editing posts carry the `PDFDocument` so other windows ignore them.
+2. **Thumbnail / sidebar identity reset.** Sidebar uses `.id(ObjectIdentifier(document))`. `ThumbnailItem` invalidates on document identity change (not only `documentVersion`, which reset to 0 every open). Async thumbnail completion drops stale epochs. Cache keys use full `ObjectIdentifier` instead of `hashValue`.
+3. **Load generation + clear-on-open.** Every open bumps `loadGeneration` and calls `clearAllViewerState()` immediately (no more old PDF left on screen while the new one loads). Async PDF/EML/DOCX/OCR/MD-render completions check generation + URL before applying. Main pane shows a Loading state when `pdfDocument` is nil mid-open.
+
+**Files:** `ContentView.swift`, `PDFKitView.swift`, `ThumbnailSidebar.swift`, `MikePDFViewerApp.swift`, `WatermarkSheet.swift`, `project.pbxproj` (6.12.5)
+
+**Please test:**
+- Single window: open PDF A, then B, then A again. Title, thumbnails, and main view must all match; no flash of the other file after load settles.
+- Two windows: Doc A in W1, Doc B in W2; File > Open C from the key window. Only the key window becomes C; the other keeps its document and title.
+- Rapid open of several large PDFs: final state matches the last chosen file only.
+- PDF -> MD -> PDF and PDF -> PPTX -> PDF: no leftover thumbnails or bookmarks.
+- Annotate in W1 only: W2 must not become dirty / must not change.
+
+**Still open from the evaluation:** v6.13 find-next/prev; v6.14 full multi-window (Cmd+N / tabs) and thumbnail cache cost limits; window-close dirty guard still missing.
+
+---
+
+## Previous state (July 10): v6.12.4 - Safety release (data-loss fixes from the full evaluation)
 
 ### July 10 evening - v6.12 safety release
 

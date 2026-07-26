@@ -132,12 +132,13 @@ class PrintablePDFView: PDFView {
 
     func addAnnotationWithUndo(_ annotation: PDFAnnotation, to page: PDFPage) {
         page.addAnnotation(annotation)
+        let doc = self.document
         undoManager?.registerUndo(withTarget: self) { target in
             page.removeAnnotation(annotation)
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: doc)
         }
         undoManager?.setActionName("Add Annotation")
-        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: doc)
     }
 
     // MARK: - Annotation placement
@@ -220,7 +221,7 @@ class PrintablePDFView: PDFView {
         }
         NotificationCenter.default.post(
             name: .pdfAnnotationEditingChanged,
-            object: nil,
+            object: self.document,
             userInfo: info
         )
     }
@@ -236,7 +237,7 @@ class PrintablePDFView: PDFView {
         setNeedsDisplay(bounds)
         NotificationCenter.default.post(
             name: .pdfAnnotationEditingChanged,
-            object: nil,
+            object: self.document,
             userInfo: ["editing": false, "type": "", "text": ""]
         )
     }
@@ -254,10 +255,10 @@ class PrintablePDFView: PDFView {
         setNeedsDisplay(bounds)
         NotificationCenter.default.post(
             name: .pdfAnnotationEditingChanged,
-            object: nil,
+            object: self.document,
             userInfo: ["editing": false, "type": "", "text": ""]
         )
-        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: self.document)
     }
 
     func updateActiveAnnotationText(_ text: String) {
@@ -487,14 +488,26 @@ struct PDFKitView: NSViewRepresentable {
         )
 
         context.coordinator.pdfView = pdfView
-        PrintablePDFView.current = pdfView
+        // Prefer the key window's view for app-wide helpers (print, etc.).
+        if pdfView.window?.isKeyWindow == true || PrintablePDFView.current == nil {
+            PrintablePDFView.current = pdfView
+        }
         PrintablePDFView.installPrintMonitor()
         return pdfView
     }
 
     func updateNSView(_ pdfView: PrintablePDFView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.pdfView = pdfView
+        if pdfView.window?.isKeyWindow == true {
+            PrintablePDFView.current = pdfView
+        }
+
         if pdfView.document !== document {
             pdfView.document = document
+            // Drop search highlights that belonged to the previous document.
+            context.coordinator.resetSearch()
+            pdfView.highlightedSelections = nil
         }
 
         if let page = document.page(at: currentPage),
@@ -545,6 +558,18 @@ struct PDFKitView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
 
+        /// Menu / toolbar notifications are posted app-wide; only the key
+        /// window's PDFView should react so multi-window sessions stay isolated.
+        private var isKeyWindowTarget: Bool {
+            guard let pdfView else { return false }
+            // During the first layout pass window may still be nil; allow the
+            // sole/active PrintablePDFView.current to handle those.
+            if let window = pdfView.window {
+                return window.isKeyWindow
+            }
+            return PrintablePDFView.current === pdfView
+        }
+
         @objc func pageChanged(_ notification: Notification) {
             guard let pdfView = notification.object as? PDFView,
                   let currentPage = pdfView.currentPage,
@@ -554,32 +579,45 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        @objc func handleZoomIn(_ notification: Notification) { pdfView?.zoomIn(nil) }
-        @objc func handleZoomOut(_ notification: Notification) { pdfView?.zoomOut(nil) }
-        @objc func handleZoomFit(_ notification: Notification) { pdfView?.autoScales = true }
+        @objc func handleZoomIn(_ notification: Notification) {
+            guard isKeyWindowTarget else { return }
+            pdfView?.zoomIn(nil)
+        }
+        @objc func handleZoomOut(_ notification: Notification) {
+            guard isKeyWindowTarget else { return }
+            pdfView?.zoomOut(nil)
+        }
+        @objc func handleZoomFit(_ notification: Notification) {
+            guard isKeyWindowTarget else { return }
+            pdfView?.autoScales = true
+        }
 
         @objc func handleRotateRight(_ notification: Notification) {
-            guard let page = pdfView?.currentPage else { return }
+            guard isKeyWindowTarget, let pdfView, let page = pdfView.currentPage else { return }
             page.rotation = (page.rotation + 90) % 360
-            pdfView?.layoutDocumentView()
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            pdfView.layoutDocumentView()
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: pdfView.document)
         }
 
         @objc func handleRotateLeft(_ notification: Notification) {
-            guard let page = pdfView?.currentPage else { return }
+            guard isKeyWindowTarget, let pdfView, let page = pdfView.currentPage else { return }
             page.rotation = (page.rotation + 270) % 360
-            pdfView?.layoutDocumentView()
-            NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+            pdfView.layoutDocumentView()
+            NotificationCenter.default.post(name: .pdfDocumentModified, object: pdfView.document)
         }
 
-        @objc func handleCopy(_ notification: Notification) { pdfView?.copy(nil) }
+        @objc func handleCopy(_ notification: Notification) {
+            guard isKeyWindowTarget else { return }
+            pdfView?.copy(nil)
+        }
 
         @objc func handleHighlight(_ notification: Notification) { applyTextMarkup(.highlight, from: notification) }
         @objc func handleUnderline(_ notification: Notification) { applyTextMarkup(.underline, from: notification) }
         @objc func handleStrikethrough(_ notification: Notification) { applyTextMarkup(.strikeOut, from: notification) }
 
         private func applyTextMarkup(_ type: PDFAnnotationSubtype, from notification: Notification) {
-            guard let pdfView = pdfView,
+            guard isKeyWindowTarget,
+                  let pdfView = pdfView,
                   let selection = pdfView.currentSelection else { return }
             let color = notification.userInfo?["color"] as? NSColor ?? .yellow
 
@@ -594,21 +632,27 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         @objc func handleApplySignature(_ notification: Notification) {
-            guard let pdfView = pdfView,
+            guard isKeyWindowTarget,
+                  let pdfView = pdfView,
                   let image = notification.userInfo?["image"] as? NSImage else { return }
             pdfView.placeSignature(image: image)
         }
 
         @objc func handleRedactSelection(_ notification: Notification) {
-            guard let pdfView = pdfView,
+            guard isKeyWindowTarget,
+                  let pdfView = pdfView,
                   let selection = pdfView.currentSelection,
                   let document = pdfView.document else { return }
 
             let success = RedactionService.redactSelection(selection, in: document)
             if success {
                 pdfView.clearSelection()
-                NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+                NotificationCenter.default.post(name: .pdfDocumentModified, object: document)
             }
+        }
+
+        func resetSearch() {
+            lastSearchText = ""
         }
 
         func search(_ text: String, in pdfView: PDFView) {

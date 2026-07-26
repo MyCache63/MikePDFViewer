@@ -98,7 +98,7 @@ struct WatermarkSheet: View {
             rotation: CGFloat(rotation)
         )
         WatermarkService.applyWatermark(to: document, config: config)
-        NotificationCenter.default.post(name: .pdfDocumentModified, object: nil)
+        NotificationCenter.default.post(name: .pdfDocumentModified, object: document)
         dismiss()
     }
 }

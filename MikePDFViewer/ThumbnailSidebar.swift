@@ -90,6 +90,14 @@ struct ThumbnailSidebar: View {
                 }
             )
             .onChange(of: documentVersion) { _, _ in prewarmThumbnails() }
+            // New PDFDocument instance = wipe row @State (selected pages,
+            // scroll position helpers) so the previous file cannot leak.
+            .onChange(of: ObjectIdentifier(document)) { _, _ in
+                selectedPages.removeAll()
+                draggedPage = nil
+                lastPrewarmKey = ""
+                prewarmThumbnails()
+            }
             .focusable()
             .focused($sidebarFocused)
             .focusEffectDisabled()
@@ -165,7 +173,7 @@ struct ThumbnailSidebar: View {
     /// document opens, so the sidebar appears sharp immediately instead of
     /// showing a placeholder per row while scrolling.
     private func prewarmThumbnails() {
-        let key = "\(ObjectIdentifier(document).hashValue)-\(documentVersion)"
+        let key = "\(ObjectIdentifier(document))-\(documentVersion)"
         guard key != lastPrewarmKey else { return }
         lastPrewarmKey = key
 
@@ -287,7 +295,13 @@ enum ThumbnailRenderer {
     }
 
     static func cacheKey(document: PDFDocument, pageIndex: Int, version: Int, pixelWidth: CGFloat) -> NSString {
-        "\(ObjectIdentifier(document).hashValue)-\(pageIndex)-\(version)-\(Int(pixelWidth))" as NSString
+        // ObjectIdentifier's description is unique per instance; hashValue alone
+        // can collide and serve a prior document's bitmap under the same key.
+        "\(ObjectIdentifier(document))-\(pageIndex)-\(version)-\(Int(pixelWidth))" as NSString
+    }
+
+    static func clearCache() {
+        thumbnailCache.removeAllObjects()
     }
 
     static func cached(document: PDFDocument, pageIndex: Int, version: Int, pixelWidth: CGFloat) -> NSImage? {
@@ -322,6 +336,11 @@ struct ThumbnailItem: View {
     @State private var thumbnail: NSImage?
     @State private var renderedPixelWidth: CGFloat = 0
     @State private var lastDisplayWidth: CGFloat = 0
+    /// Bumped whenever the bound document or version changes so in-flight
+    /// background renders can discard stale results.
+    @State private var renderEpoch: UInt64 = 0
+
+    private var documentIdentity: ObjectIdentifier { ObjectIdentifier(document) }
 
     private var borderColor: Color {
         if isSelected { return .accentColor }
@@ -350,9 +369,9 @@ struct ThumbnailItem: View {
             .background(
                 GeometryReader { geo in
                     Color.white
-                        .onAppear { generateThumbnail(displayWidth: geo.size.width) }
+                        .onAppear { generateThumbnail(displayWidth: geo.size.width, force: false) }
                         .onChange(of: geo.size.width) { _, newWidth in
-                            generateThumbnail(displayWidth: newWidth)
+                            generateThumbnail(displayWidth: newWidth, force: false)
                         }
                 }
             )
@@ -386,20 +405,31 @@ struct ThumbnailItem: View {
         .background(isMultiSelected ? Color.orange.opacity(0.08) : Color.clear)
         .cornerRadius(4)
         .onChange(of: documentVersion) { _, _ in
-            thumbnail = nil
-            renderedPixelWidth = 0
-            generateThumbnail(displayWidth: lastDisplayWidth)
+            invalidateAndRegenerate()
         }
+        .onChange(of: documentIdentity) { _, _ in
+            invalidateAndRegenerate()
+        }
+    }
+
+    private func invalidateAndRegenerate() {
+        thumbnail = nil
+        renderedPixelWidth = 0
+        renderEpoch &+= 1
+        generateThumbnail(displayWidth: lastDisplayWidth, force: true)
     }
 
     /// Renders the page at the actual on-screen width times the Retina scale
     /// factor. The old fixed 120x160 render got stretched to sidebar width,
     /// which made every thumbnail fuzzy on Retina displays.
-    private func generateThumbnail(displayWidth: CGFloat) {
+    private func generateThumbnail(displayWidth: CGFloat, force: Bool) {
+        guard displayWidth > 0 else { return }
         lastDisplayWidth = displayWidth
         let pixelWidth = ThumbnailRenderer.pixelWidth(forDisplayWidth: displayWidth)
 
-        guard pixelWidth > renderedPixelWidth else { return }
+        // Without `force`, skip when we already rendered at this size for the
+        // current document. On document switch force=true clears that guard.
+        if !force, pixelWidth <= renderedPixelWidth, thumbnail != nil { return }
         renderedPixelWidth = pixelWidth
 
         if let cached = ThumbnailRenderer.cached(document: document, pageIndex: pageIndex, version: documentVersion, pixelWidth: pixelWidth) {
@@ -408,9 +438,14 @@ struct ThumbnailItem: View {
         }
 
         let version = documentVersion
+        let doc = document
+        let page = pageIndex
+        let epoch = renderEpoch
         DispatchQueue.global(qos: .userInitiated).async {
-            let img = ThumbnailRenderer.renderAndCache(document: document, pageIndex: pageIndex, version: version, pixelWidth: pixelWidth)
+            let img = ThumbnailRenderer.renderAndCache(document: doc, pageIndex: page, version: version, pixelWidth: pixelWidth)
             DispatchQueue.main.async {
+                // Drop results that belong to a previous document/version.
+                guard epoch == renderEpoch else { return }
                 if let img { thumbnail = img }
             }
         }
