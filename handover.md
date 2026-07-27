@@ -1,10 +1,33 @@
-# MikePDFViewer Handover - July 26, 2026
+# MikePDFViewer Handover - July 27, 2026
 
-## Current State: v6.12.5 - Stale document artifact fixes
+## Current State: v6.13.0 - Print everywhere (MD/TXT/JSON/HTML) + JSON viewer + default-app for .txt/.json
 
-**BUILD STATUS:** v6.12.5 builds (Xcode Debug + Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing
+**BUILD STATUS:** v6.13.0 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing (v6.12.x also still untested)
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tags:** `before-stale-doc-artifacts-jul26` (v6.12.4 start), `before-v6.12-safety-jul10`, `before-txt-pptx-jul10`
+**Latest safety tags:** `before-print-md-txt-json-2026-07-27`, `before-stale-doc-artifacts-jul26`, `before-v6.12-safety-jul10`
+
+### July 27 - v6.13.0 Print in every text-based viewer; .json support; default app for .txt/.json
+
+Michael reported he could not print an .md, and asked for .json support plus making the app the default for .txt and .json.
+
+- **Print routing.** Cmd+P and the toolbar printer button now post `.pdfPrint`; the key window's `ContentView.handlePrint()` routes by mode: PDF prints as before; Markdown renders through `MarkdownToPDFConverter` (same theme/typography as on screen) and prints the resulting PDF without leaving reader mode; TXT/LOG/JSON print through a paginating `NSTextView` forced to black-on-white (dark mode safe); HTML prints the WKWebView. QuickLook mode (docx/pptx/key) shows a hint to Convert to PDF first. Toolbar print button enables in all printable modes.
+- **JSON files.** `.json` added to the open panel, routed to the plain-text viewer (monospace default, same font menu), and declared in Info.plist (`public.json`).
+- **Default app.** Plain Text and JSON `LSHandlerRank` raised to Default in Info.plist, and `scripts/set_default_apps.swift` was RUN on this Mac: `public.plain-text` and `public.json` now default to com.mikeashe.MikePDFViewer (verified via `scripts/verify_default_apps.swift`). Re-run the set script on a new Mac or after a macOS reset.
+
+**Files:** `ContentView.swift`, `MikePDFViewerApp.swift`, `Info.plist`, `project.pbxproj` (6.13.0), `scripts/set_default_apps.swift`, `scripts/verify_default_apps.swift`
+
+**Please test:**
+- Open an .md, Cmd+P: print dialog shows the themed rendering; Cancel works; reader stays on screen after.
+- Open a .txt and a .json (double-click from Finder should now open MikePDFViewer), Cmd+P in each: paginated monospace output, black text even in dark mode.
+- PDF printing unchanged; in a pptx/docx QuickLook view Cmd+P shows the Convert-to-PDF hint alert.
+- Two windows open: Cmd+P prints only the key window's document.
+
+**Still open from the evaluation:** v6.13 find-next/prev cycling; Cmd+F inside HTML/QuickLook; large-txt performance; v6.14 full multi-window (Cmd+N / tabs), thumbnail cache cost limits; window-close (red button) dirty guard still missing.
+
+---
+
+## Previous state (July 26): v6.12.5 - Stale document artifact fixes
+
 **Diagnosis write-up:** `BugReport_StaleDocumentArtifacts_v01_Jul26.md`
 
 ### July 26 - v6.12.5 Fix stale artifacts from the previous document
