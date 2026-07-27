@@ -200,7 +200,9 @@ struct MikePDFViewerApp: App {
             // MARK: Print
             CommandGroup(replacing: .printItem) {
                 Button("Print...") {
-                    PrintablePDFView.current?.performPrint()
+                    // ContentView routes this to the active viewer (PDF,
+                    // markdown, text, or HTML); key scene only.
+                    NotificationCenter.default.post(name: .pdfPrint, object: nil)
                 }
                 .keyboardShortcut("p", modifiers: .command)
             }

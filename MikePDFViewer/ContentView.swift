@@ -333,6 +333,10 @@ struct ContentView: View {
                 guard isKeyScene else { return }
                 makeSearchable()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
+                guard isKeyScene else { return }
+                handlePrint()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .pdfGoToPage)) { _ in
                 guard isKeyScene else { return }
                 if totalPages > 0 {
@@ -724,9 +728,9 @@ struct ContentView: View {
             .help("Save As (Shift+Cmd+S)")
             .disabled(pdfDocument == nil)
 
-        Button { PrintablePDFView.current?.performPrint() } label: { Image(systemName: "printer") }
+        Button { handlePrint() } label: { Image(systemName: "printer") }
             .help("Print (Cmd+P)")
-            .disabled(pdfDocument == nil)
+            .disabled(!canPrint)
 
         if let url = pdfURL {
             ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
@@ -1388,7 +1392,7 @@ struct ContentView: View {
 
     private func openPDF() {
         let panel = NSOpenPanel()
-        var types: [UTType] = [.pdf, .plainText]
+        var types: [UTType] = [.pdf, .plainText, .json]
         if let emlType = UTType(filenameExtension: "eml") { types.append(emlType) }
         if let docxType = UTType(filenameExtension: "docx") { types.append(docxType) }
         if let mdType = UTType(filenameExtension: "md") { types.append(mdType) }
@@ -1513,7 +1517,7 @@ struct ContentView: View {
             loadQuickLookDocument(from: url, generation: generation)
         case "md", "markdown":
             loadMarkdownDocument(from: url, generation: generation)
-        case "txt", "text", "log":
+        case "txt", "text", "log", "json":
             loadTextDocument(from: url, generation: generation)
         case "html", "htm":
             loadHTMLDocument(from: url, generation: generation)
@@ -1621,6 +1625,116 @@ struct ContentView: View {
         default:
             return NSFont(name: txtFontName, size: txtFontSize)
                 ?? .monospacedSystemFont(ofSize: txtFontSize, weight: .regular)
+        }
+    }
+
+    // MARK: - Printing
+
+    /// Route Cmd+P / toolbar print to whichever viewer is active.
+    private func handlePrint() {
+        if pdfDocument != nil {
+            PrintablePDFView.current?.performPrint()
+        } else if isViewingMarkdown {
+            printMarkdownDocument()
+        } else if isViewingText {
+            printTextDocument()
+        } else if isViewingHTML {
+            printHTMLDocument()
+        } else if isViewingQuickLook {
+            errorAlertMessage = "Printing isn't available in the quick viewer. Use Convert to PDF first, then print."
+        }
+    }
+
+    private var canPrint: Bool {
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML
+    }
+
+    /// Render the markdown through the existing PDF converter (same theme and
+    /// typography as on screen), then print that PDF without leaving reader mode.
+    private func printMarkdownDocument() {
+        guard let doc = markdownDocument, let url = originalMarkdownURL else { return }
+        isRenderingMarkdownPDF = true
+        Task {
+            do {
+                let (pdfDoc, _) = try await MarkdownToPDFConverter.convert(
+                    source: doc.source,
+                    sourceURL: url,
+                    theme: markdownTheme,
+                    typography: markdownTypography
+                )
+                await MainActor.run {
+                    isRenderingMarkdownPDF = false
+                    runPrintOperation(for: pdfDoc)
+                }
+            } catch {
+                await MainActor.run {
+                    isRenderingMarkdownPDF = false
+                    errorAlertMessage = "Could not prepare \(url.lastPathComponent) for printing: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func runPrintOperation(for document: PDFDocument) {
+        let printInfo = NSPrintInfo.shared
+        guard let op = document.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true) else {
+            errorAlertMessage = "Could not create a print job for this document."
+            return
+        }
+        op.showsPrintPanel = true
+        op.showsProgressPanel = true
+        if let window = NSApp.keyWindow {
+            op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        } else {
+            op.run()
+        }
+    }
+
+    /// Print plain text (.txt/.log/.json) via a paginating NSTextView. Forces
+    /// black-on-white so dark mode doesn't produce white-on-white pages.
+    private func printTextDocument() {
+        let printInfo = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo.shared
+        printInfo.horizontalPagination = .fit
+        printInfo.verticalPagination = .automatic
+        printInfo.isHorizontallyCentered = false
+        printInfo.isVerticallyCentered = false
+
+        let printable = NSAttributedString(string: textFileContent, attributes: [
+            .font: textFileFont,
+            .foregroundColor: NSColor.black
+        ])
+        let pageBounds = printInfo.imageablePageBounds
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: pageBounds.width, height: pageBounds.height))
+        textView.textContainer?.widthTracksTextView = true
+        textView.isVerticallyResizable = true
+        textView.backgroundColor = .white
+        textView.textStorage?.setAttributedString(printable)
+        if let container = textView.textContainer, let layoutManager = textView.layoutManager {
+            layoutManager.ensureLayout(for: container)
+            let height = max(pageBounds.height, layoutManager.usedRect(for: container).height)
+            textView.frame = NSRect(x: 0, y: 0, width: pageBounds.width, height: height)
+        }
+
+        let op = NSPrintOperation(view: textView, printInfo: printInfo)
+        op.showsPrintPanel = true
+        op.showsProgressPanel = true
+        if let window = NSApp.keyWindow {
+            op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        } else {
+            op.run()
+        }
+    }
+
+    private func printHTMLDocument() {
+        let op = htmlBrowser.webView.printOperation(with: NSPrintInfo.shared)
+        op.showsPrintPanel = true
+        op.showsProgressPanel = true
+        // WKWebView print needs a nonzero view frame or it renders blank pages.
+        op.view?.frame = htmlBrowser.webView.bounds
+        if let window = NSApp.keyWindow {
+            op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        } else {
+            op.run()
         }
     }
 
