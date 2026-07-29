@@ -82,7 +82,7 @@ struct NotepadView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
-                .tooltip("Delete Note")
+                .help("Delete Note")
                 .disabled(selectedID == nil)
             }
         }
