@@ -1,10 +1,27 @@
-# MikePDFViewer Handover - July 27, 2026
+# MikePDFViewer Handover - July 28, 2026
 
-## Current State: v6.13.0 - Print everywhere (MD/TXT/JSON/HTML) + JSON viewer + default-app for .txt/.json
+## Current State: v6.14.0 - Notepad (JSON-backed) with word count
 
-**BUILD STATUS:** v6.13.0 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing (v6.12.x also still untested)
+**BUILD STATUS:** v6.14.0 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing (v6.12.x/v6.13.0 also still untested)
 **Repo:** https://github.com/MyCache63/MikePDFViewer
-**Latest safety tags:** `before-print-md-txt-json-2026-07-27`, `before-stale-doc-artifacts-jul26`, `before-v6.12-safety-jul10`
+**Latest safety tags:** `before-notepad-2026-07-28`, `before-print-md-txt-json-2026-07-27`, `before-stale-doc-artifacts-jul26`
+
+### July 28 - v6.14.0 Notepad + word count
+
+Michael asked for an Apple Notes style notepad (yellow lined notebook icon) with a word count function, storing notes as JSON so they can be searched/indexed/RAGed outside the app.
+
+- **Notepad window.** Toolbar legal-pad icon (drawn in SwiftUI: yellow, ruled lines, red margin) or Tools > Notepad (Shift+Cmd+N). Left: note list with search, title (first line of the note), modified date, per-note word count. Right: editor with a text-size stepper. New-note and delete (confirmation dialog) in the window toolbar. Autosaves 0.7s after typing stops, plus on window close and app quit.
+- **Word count.** Footer under the editor shows live words / characters / lines; word counting uses linguistic enumeration (`enumerateSubstrings .byWords`), Apple style. `wordCount` is also persisted per note in the JSON.
+- **Storage.** `notes.json` (pretty-printed, sorted keys, ISO-8601 dates; fields: id, title, body, createdAt, modifiedAt, wordCount; top-level `version: 1`) at `~/Library/Containers/com.mikeashe.MikePDFViewer/Data/Documents/Notes/notes.json`. The footer's "notes.json" link reveals it in Finder for pointing external index/RAG tools at it.
+- Fixed: `.json` was missing from the app-menu open panel (v6.13.0 only added it to ContentView's).
+
+**Files:** `NotesStore.swift` (new, AA000096/97), `NotepadView.swift` (new, AA000098/99), `ContentView.swift`, `MikePDFViewerApp.swift`, `project.pbxproj` (6.14.0)
+
+**Please test:** open Notepad from the toolbar icon, type a few notes (first line becomes the title), watch the live word count, quit and relaunch (notes persist), click the notes.json footer link and confirm the JSON is readable.
+
+---
+
+## Previous state (July 27): v6.13.0 - Print everywhere (MD/TXT/JSON/HTML) + JSON viewer + default-app for .txt/.json
 
 ### July 27 - v6.13.0 Print in every text-based viewer; .json support; default app for .txt/.json
 
