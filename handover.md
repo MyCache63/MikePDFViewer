@@ -1,8 +1,12 @@
 # MikePDFViewer Handover - July 28, 2026
 
-## Current State: v6.14.0 - Notepad (JSON-backed) with word count
+## Current State: v6.14.1 - Notepad (JSON-backed) with word count; tooltips on disabled icons
 
-**BUILD STATUS:** v6.14.0 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing (v6.12.x/v6.13.0 also still untested)
+**BUILD STATUS:** v6.14.1 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting Michael's device testing (v6.12.x/v6.13.0 also still untested). NOTE: Michael's screenshot of July 28 9:24 PM showed a still-running v6.13.0 instance; the notepad icon only appears after a full quit (Cmd+Q) and relaunch.
+
+### July 28 late - v6.14.1 Tooltips on disabled toolbar icons
+
+SwiftUI `.help()` never shows while a control is disabled, so PDF-only icons (zoom, rotate, markup, ...) said nothing on hover in markdown/text mode. New `.tooltip()` modifier (AppKit `NSView.toolTip` as a `.background`, per https://blog.rampatra.com/adding-tooltips-to-swiftui-views-on-macos) replaces `.help()` on all ContentView toolbar icons and the Notepad delete button; added missing tooltips on the search-bar clear button and EML attachment Save/Open.
 **Repo:** https://github.com/MyCache63/MikePDFViewer
 **Latest safety tags:** `before-notepad-2026-07-28`, `before-print-md-txt-json-2026-07-27`, `before-stale-doc-artifacts-jul26`
 
