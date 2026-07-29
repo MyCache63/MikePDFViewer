@@ -62,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MikePDFViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var recentFiles = RecentFilesManager()
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @FocusedValue(\.pdfDocument) var focusedDocument
@@ -227,6 +228,13 @@ struct MikePDFViewerApp: App {
 
                 Divider()
 
+                Button("Notepad") {
+                    openWindow(id: "notepad")
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Divider()
+
                 Button("Clear Rendered Temp Files") {
                     TempFolderManager.clearAll()
                 }
@@ -319,6 +327,11 @@ struct MikePDFViewerApp: App {
                 .disabled(focusedDocument == nil)
             }
         }
+
+        Window("Notepad", id: "notepad") {
+            NotepadView()
+        }
+        .defaultSize(width: 820, height: 520)
     }
 
     // MARK: - Actions
@@ -334,6 +347,7 @@ struct MikePDFViewerApp: App {
         if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         types.append(.html)
+        types.append(.json)
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {

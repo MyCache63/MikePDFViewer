@@ -9,6 +9,7 @@ struct ContentView: View {
     /// (Open, zoom, find, etc.). Without this, every open window loads the
     /// same file and shares edits - the multi-window stale-artifact bug.
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @State private var pdfDocument: PDFDocument?
     @State private var currentPage: Int = 0
@@ -736,6 +737,9 @@ struct ContentView: View {
             ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
                 .help("Share PDF")
         }
+
+        Button { openWindow(id: "notepad") } label: { NotepadIconView() }
+            .help("Notepad (Shift+Cmd+N)")
 
         OpenWithMenu(fileURL: openWithSourceURL, fileKind: openWithFileKind)
 
