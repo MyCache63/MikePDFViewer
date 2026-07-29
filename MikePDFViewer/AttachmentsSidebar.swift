@@ -109,6 +109,7 @@ private struct AttachmentRow: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
+                .help("Save this attachment to a folder you choose")
 
                 Button {
                     openAttachment()
@@ -118,6 +119,7 @@ private struct AttachmentRow: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
+                .help("Open this attachment in its default app")
             }
         }
         .padding(8)

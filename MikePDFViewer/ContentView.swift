@@ -723,23 +723,23 @@ struct ContentView: View {
     @ViewBuilder
     private var fileToolbar: some View {
         Button { openPDF() } label: { Image(systemName: "folder") }
-            .help("Open PDF (Cmd+O)")
+            .tooltip("Open PDF (Cmd+O)")
 
         Button { saveDocumentAs() } label: { Image(systemName: "square.and.arrow.down") }
-            .help("Save As (Shift+Cmd+S)")
+            .tooltip("Save As (Shift+Cmd+S)")
             .disabled(pdfDocument == nil)
 
         Button { handlePrint() } label: { Image(systemName: "printer") }
-            .help("Print (Cmd+P)")
+            .tooltip("Print (Cmd+P)")
             .disabled(!canPrint)
 
         if let url = pdfURL {
             ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                .help("Share PDF")
+                .tooltip("Share PDF")
         }
 
         Button { openWindow(id: "notepad") } label: { NotepadIconView() }
-            .help("Notepad (Shift+Cmd+N)")
+            .tooltip("Notepad (Shift+Cmd+N)")
 
         OpenWithMenu(fileURL: openWithSourceURL, fileKind: openWithFileKind)
 
@@ -751,26 +751,26 @@ struct ContentView: View {
             Button { htmlBrowser.goBack() } label: {
                 Image(systemName: "chevron.left")
             }
-            .help("Back")
+            .tooltip("Back")
             .disabled(!htmlBrowser.canGoBack)
 
             Button { htmlBrowser.goForward() } label: {
                 Image(systemName: "chevron.right")
             }
-            .help("Forward")
+            .tooltip("Forward")
             .disabled(!htmlBrowser.canGoForward)
 
             Button { htmlBrowser.reload() } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .help("Reload")
+            .tooltip("Reload")
 
             Button {
                 if let url = originalHTMLURL { htmlBrowser.load(fileURL: url) }
             } label: {
                 Image(systemName: "house")
             }
-            .help("Back to the opened file")
+            .tooltip("Back to the opened file")
         }
 
         if isViewingQuickLook, let docxURL = originalDOCXURL {
@@ -783,7 +783,7 @@ struct ContentView: View {
                     Image(systemName: "doc.richtext")
                 }
             }
-            .help("Convert to PDF (enables search, annotate, print; slower)")
+            .tooltip("Convert to PDF (enables search, annotate, print; slower)")
             .disabled(isConvertingDOCX)
         }
 
@@ -793,7 +793,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: markdownMode == .reader ? "book" : "doc.plaintext")
             }
-            .help(markdownMode == .reader ? "Switch to Quick view" : "Switch to Reader view")
+            .tooltip(markdownMode == .reader ? "Switch to Quick view" : "Switch to Reader view")
 
             if markdownMode == .reader {
                 Menu {
@@ -812,12 +812,12 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "paintpalette")
                 }
-                .help("Reading Theme — \(markdownTheme.displayName)")
+                .tooltip("Reading Theme — \(markdownTheme.displayName)")
 
                 Button { showMarkdownSettings.toggle() } label: {
                     Image(systemName: "textformat.size")
                 }
-                .help("Typography & Focus Mode")
+                .tooltip("Typography & Focus Mode")
                 .popover(isPresented: $showMarkdownSettings, arrowEdge: .bottom) {
                     MarkdownReaderSettings(
                         typography: markdownTypographyBinding,
@@ -828,7 +828,7 @@ struct ContentView: View {
                 Button { mdTOCVisible.toggle() } label: {
                     Image(systemName: mdTOCVisible ? "list.bullet.indent" : "list.bullet")
                 }
-                .help(mdTOCVisible ? "Hide Table of Contents" : "Show Table of Contents")
+                .tooltip(mdTOCVisible ? "Hide Table of Contents" : "Show Table of Contents")
             }
 
             Button { renderMarkdownAsPDF() } label: {
@@ -838,7 +838,7 @@ struct ContentView: View {
                     Image(systemName: "doc.richtext")
                 }
             }
-            .help("Render as PDF")
+            .tooltip("Render as PDF")
             .disabled(isRenderingMarkdownPDF)
         }
 
@@ -848,7 +848,7 @@ struct ContentView: View {
             showSearch.toggle()
             if !showSearch { searchText = "" }
         } label: { Image(systemName: "magnifyingglass") }
-            .help("Search (Cmd+F)")
+            .tooltip("Search (Cmd+F)")
     }
 
     /// Quick font switcher for the plain-text viewer: a few sensible
@@ -894,7 +894,7 @@ struct ContentView: View {
         } label: {
             Image(systemName: "textformat")
         }
-        .help("Text font: \(txtFontName) \(Int(txtFontSize)) pt")
+        .tooltip("Text font: \(txtFontName) \(Int(txtFontSize)) pt")
     }
 
     @ViewBuilder
@@ -902,27 +902,27 @@ struct ContentView: View {
         Button { NotificationCenter.default.post(name: .pdfZoomOut, object: nil) } label: {
             Image(systemName: "minus.magnifyingglass")
         }
-        .help("Zoom Out").disabled(pdfDocument == nil)
+        .tooltip("Zoom Out").disabled(pdfDocument == nil)
 
         Button { NotificationCenter.default.post(name: .pdfZoomIn, object: nil) } label: {
             Image(systemName: "plus.magnifyingglass")
         }
-        .help("Zoom In").disabled(pdfDocument == nil)
+        .tooltip("Zoom In").disabled(pdfDocument == nil)
 
         Button { darkModeReading.toggle() } label: {
             Image(systemName: darkModeReading ? "sun.max" : "moon")
         }
-        .help(darkModeReading ? "Light Mode" : "Dark Reading Mode").disabled(pdfDocument == nil)
+        .tooltip(darkModeReading ? "Light Mode" : "Dark Reading Mode").disabled(pdfDocument == nil)
 
         Button { NotificationCenter.default.post(name: .pdfRotateLeft, object: nil) } label: {
             Image(systemName: "rotate.left")
         }
-        .help("Rotate Left").disabled(pdfDocument == nil)
+        .tooltip("Rotate Left").disabled(pdfDocument == nil)
 
         Button { NotificationCenter.default.post(name: .pdfRotateRight, object: nil) } label: {
             Image(systemName: "rotate.right")
         }
-        .help("Rotate Right").disabled(pdfDocument == nil)
+        .tooltip("Rotate Right").disabled(pdfDocument == nil)
 
         Picker("", selection: $displayMode) {
             Text("Continuous").tag(PDFDisplayMode.singlePageContinuous)
@@ -931,17 +931,17 @@ struct ContentView: View {
             Text("Two Pages Scroll").tag(PDFDisplayMode.twoUpContinuous)
         }
         .pickerStyle(.menu).frame(width: 130)
-        .help("Display Mode").disabled(pdfDocument == nil)
+        .tooltip("Display Mode").disabled(pdfDocument == nil)
 
         Button { showSplitView.toggle(); if showSplitView { splitCurrentPage = currentPage } } label: {
             Image(systemName: showSplitView ? "rectangle" : "rectangle.split.2x1")
         }
-        .help(showSplitView ? "Close Split View" : "Split View").disabled(pdfDocument == nil)
+        .tooltip(showSplitView ? "Close Split View" : "Split View").disabled(pdfDocument == nil)
 
         Button { showPresentation = true } label: {
             Image(systemName: "play.rectangle")
         }
-        .help("Presentation Mode").disabled(pdfDocument == nil)
+        .tooltip("Presentation Mode").disabled(pdfDocument == nil)
     }
 
     @ViewBuilder
@@ -949,65 +949,65 @@ struct ContentView: View {
         Button { showAnnotationBar.toggle() } label: {
             Image(systemName: "pencil.tip.crop.circle")
         }
-        .help("Markup Tools").disabled(pdfDocument == nil)
+        .tooltip("Markup Tools").disabled(pdfDocument == nil)
 
         Button { bookmarkManager.toggleBookmark(for: currentPage) } label: {
             Image(systemName: bookmarkManager.isBookmarked(currentPage) ? "bookmark.fill" : "bookmark")
         }
-        .help("Toggle Bookmark (Cmd+D)").disabled(pdfDocument == nil)
+        .tooltip("Toggle Bookmark (Cmd+D)").disabled(pdfDocument == nil)
 
         Button { showExtractSheet = true } label: {
             Image(systemName: "doc.badge.plus")
         }
-        .help("Extract Pages").disabled(pdfDocument == nil)
+        .tooltip("Extract Pages").disabled(pdfDocument == nil)
 
         Button { showSignatureSheet = true } label: {
             Image(systemName: "signature")
         }
-        .help("Add Signature").disabled(pdfDocument == nil)
+        .tooltip("Add Signature").disabled(pdfDocument == nil)
 
         Button {
             showRedactConfirm = true
         } label: {
             Image(systemName: "eye.slash")
         }
-        .help("Redact Selection (select text first)").disabled(pdfDocument == nil)
+        .tooltip("Redact Selection (select text first)").disabled(pdfDocument == nil)
 
         Button { showOCRSheet = true } label: {
             Image(systemName: "doc.text.magnifyingglass")
         }
-        .help("OCR Document").disabled(pdfDocument == nil)
+        .tooltip("OCR Document").disabled(pdfDocument == nil)
 
         Button { makeSearchable() } label: {
             Image(systemName: "text.viewfinder")
         }
-        .help("Make Searchable (on-device OCR, adds a text layer so Cmd+F works on scans)")
+        .tooltip("Make Searchable (on-device OCR, adds a text layer so Cmd+F works on scans)")
         .disabled(pdfDocument == nil || isMakingSearchable)
 
         Button { showEncryptSheet = true } label: {
             Image(systemName: "lock.shield")
         }
-        .help("Password Protect").disabled(pdfDocument == nil)
+        .tooltip("Password Protect").disabled(pdfDocument == nil)
 
         Button { showWatermarkSheet = true } label: {
             Image(systemName: "drop.triangle")
         }
-        .help("Add Watermark").disabled(pdfDocument == nil)
+        .tooltip("Add Watermark").disabled(pdfDocument == nil)
 
         Button { showExportImages = true } label: {
             Image(systemName: "photo.on.rectangle")
         }
-        .help("Export as Images").disabled(pdfDocument == nil)
+        .tooltip("Export as Images").disabled(pdfDocument == nil)
 
         Button { showCompareSheet = true } label: {
             Image(systemName: "square.split.2x1")
         }
-        .help("Compare PDFs").disabled(pdfDocument == nil)
+        .tooltip("Compare PDFs").disabled(pdfDocument == nil)
 
         Button { showMergeSheet = true } label: {
             Image(systemName: "doc.on.doc")
         }
-        .help("Merge PDFs")
+        .tooltip("Merge PDFs")
     }
 
     @ViewBuilder
@@ -1022,7 +1022,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Go to Page (Cmd+Option+G)")
+            .tooltip("Go to Page (Cmd+Option+G)")
             .popover(isPresented: $showGoToPage) {
                 goToPagePopover
             }
@@ -1350,20 +1350,21 @@ struct ContentView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .tooltip("Clear search")
                     }
                     if isViewingMarkdown && markdownMode == .reader {
                         Button { mdSearch.findPrev() } label: {
                             Image(systemName: "chevron.up")
                         }
                         .buttonStyle(.plain)
-                        .help("Previous match (Shift+Return)")
+                        .tooltip("Previous match (Shift+Return)")
                         .disabled(searchText.isEmpty)
 
                         Button { mdSearch.findNext() } label: {
                             Image(systemName: "chevron.down")
                         }
                         .buttonStyle(.plain)
-                        .help("Next match (Return)")
+                        .tooltip("Next match (Return)")
                         .disabled(searchText.isEmpty)
 
                         if mdSearch.lastResult == .noMatch && !searchText.isEmpty {
@@ -2042,6 +2043,33 @@ class KeyCatcherView: NSView {
         } else {
             super.keyDown(with: event)
         }
+    }
+}
+
+// MARK: - Tooltips that survive .disabled
+
+/// SwiftUI's .help() tooltip does not appear while the control is disabled
+/// (e.g. the PDF-only toolbar icons when a markdown/text file is open). An
+/// AppKit toolTip on a backing NSView keeps working either way, so toolbar
+/// buttons use this instead.
+private struct TooltipBackground: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.toolTip = text
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.toolTip = text
+    }
+}
+
+extension View {
+    /// Drop-in replacement for .help() that still shows when disabled.
+    func tooltip(_ text: String) -> some View {
+        background(TooltipBackground(text: text))
     }
 }
 
