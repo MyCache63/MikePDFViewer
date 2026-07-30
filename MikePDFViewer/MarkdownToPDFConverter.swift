@@ -40,6 +40,42 @@ public final class MarkdownToPDFConverter {
         return (document, tempURL)
     }
 
+    /// Print-oriented conversion: real page breaks (multi-page PDF, via the
+    /// paginated renderer), caller-chosen margins, and an optional zoom that
+    /// shrinks the text for fit-to-N-pages. Margins come from NSPrintInfo, so
+    /// no `@page` CSS here (the two would stack).
+    public static func convertForPrint(source: String,
+                                       sourceURL: URL,
+                                       theme: MarkdownReaderTheme,
+                                       typography: MarkdownTypography,
+                                       marginInches: Double,
+                                       zoom: Double = 1.0
+    ) async throws -> PDFDocument {
+        let bodyHTML = MarkdownToHTML.renderHTML(source)
+        let themedHTML = MarkdownReaderThemeBundle.html(
+            body: bodyHTML,
+            title: sourceURL.lastPathComponent,
+            theme: theme,
+            typography: typography,
+            focusMode: false
+        )
+        let printStyle = """
+        <style>
+            .markdown-body { padding: 0 !important; max-width: 100% !important; }
+            html { zoom: \(String(format: "%.3f", zoom)); }
+        </style>
+        """
+        var wrapped = themedHTML
+        if let headClose = wrapped.range(of: "</head>", options: .caseInsensitive) {
+            wrapped.replaceSubrange(headClose, with: printStyle + "</head>")
+        }
+        let pdfData = try await PaginatedHTMLToPDF.render(html: wrapped, marginInches: marginInches)
+        guard let document = PDFDocument(data: pdfData), document.pageCount > 0 else {
+            throw ConversionError.parsedDocumentInvalid
+        }
+        return document
+    }
+
     /// Inject `@page` margin rule + a tighter content-area padding suitable
     /// for printed pages (the on-screen reader uses generous outer padding;
     /// the PDF gets it from `@page` instead).

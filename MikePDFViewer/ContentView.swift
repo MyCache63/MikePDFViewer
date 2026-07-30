@@ -139,6 +139,7 @@ struct ContentView: View {
     }
     private var markdownTypography: MarkdownTypography { markdownTypographyBinding.wrappedValue }
     @State private var isRenderingMarkdownPDF: Bool = false
+    @State private var showMarkdownPrintSheet: Bool = false
     @State private var renderedPDFTempURL: URL?
     @State private var pendingRenderedSourceURL: URL?
     @State private var showSaveRenderedPDFPrompt: Bool = false
@@ -170,6 +171,22 @@ struct ContentView: View {
 
     var body: some View {
         viewWithNotifications
+            .sheet(isPresented: $showMarkdownPrintSheet) {
+                if let doc = markdownDocument, let url = originalMarkdownURL {
+                    MarkdownPrintSheet(
+                        source: doc.source,
+                        sourceURL: url,
+                        theme: markdownTheme,
+                        baseTypography: markdownTypography
+                    ) { pdf in
+                        // Let the sheet finish closing before the print panel
+                        // attaches to the key window.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            runPrintOperation(for: pdf)
+                        }
+                    }
+                }
+            }
             .sheet(isPresented: $showMergeSheet) {
                 PDFMergeView()
                     .frame(minWidth: 800, minHeight: 500)
@@ -1654,30 +1671,12 @@ struct ContentView: View {
         pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML
     }
 
-    /// Render the markdown through the existing PDF converter (same theme and
-    /// typography as on screen), then print that PDF without leaving reader mode.
+    /// Show the pre-print layout sheet (font size, margins, fit-to-pages,
+    /// live paginated preview); the sheet hands back a paginated PDF that
+    /// goes to the system print dialog.
     private func printMarkdownDocument() {
-        guard let doc = markdownDocument, let url = originalMarkdownURL else { return }
-        isRenderingMarkdownPDF = true
-        Task {
-            do {
-                let (pdfDoc, _) = try await MarkdownToPDFConverter.convert(
-                    source: doc.source,
-                    sourceURL: url,
-                    theme: markdownTheme,
-                    typography: markdownTypography
-                )
-                await MainActor.run {
-                    isRenderingMarkdownPDF = false
-                    runPrintOperation(for: pdfDoc)
-                }
-            } catch {
-                await MainActor.run {
-                    isRenderingMarkdownPDF = false
-                    errorAlertMessage = "Could not prepare \(url.lastPathComponent) for printing: \(error.localizedDescription)"
-                }
-            }
-        }
+        guard markdownDocument != nil, originalMarkdownURL != nil else { return }
+        showMarkdownPrintSheet = true
     }
 
     private func runPrintOperation(for document: PDFDocument) {
