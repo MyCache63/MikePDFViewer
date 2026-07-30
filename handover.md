@@ -1,4 +1,25 @@
-# MikePDFViewer Handover - July 28, 2026
+# MikePDFViewer Handover - July 30, 2026
+
+## Current State: v6.15.0 - Markdown print preview sheet + real pagination
+
+**BUILD STATUS:** v6.15.0 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting device testing
+**Safety tag:** `before-print-preview-2026-07-30`
+
+### July 30 - v6.15.0 Markdown print: preview sheet, pagination fix
+
+Michael's long .md printed as "Page 1 of 1" with microscopic text. Root cause: `HTMLToPDFRenderer` uses WKWebView `createPDF`, which returns the WHOLE document as one tall page; the print dialog then scales it to a single sheet.
+
+- **PaginatedHTMLToPDF** (in HTMLToPDFRenderer.swift): multi-page letter PDF via WKWebView `printOperation` with a save-to-file job, `runModal` on an offscreen window (required; no panel shows). Recipe: https://developer.apple.com/forums/thread/705138
+- **MarkdownToPDFConverter.convertForPrint**: paginated conversion, margins from NSPrintInfo (no @page CSS so they don't stack), CSS `html { zoom }` for text scaling.
+- **MarkdownPrintSheet.swift** (new, AA00009A/9B): Cmd+P on markdown now opens a pre-print panel: live paginated preview, page count, font size 8-24 pt (default 12), margins narrow 0.3/normal 0.5/wide 1.0 in, "Fit to a page limit" 1-20 pages (binary-searches largest zoom that fits, floor 35%). Print... closes the sheet and sends the paginated PDF to the system dialog (0.4 s delay so the panel attaches to the main window).
+- Settings persist via AppStorage (md-print-font-size, md-print-margin).
+- NOT yet routed through the sheet: .txt/.log/.json (NSTextView path already paginates correctly; could gain the same sheet later), HTML mode, and the on-screen "Render as PDF" (still single tall page by design; candidate to switch to paginated output).
+
+**Please test:** open a long .md, Cmd+P: sheet appears; preview shows multiple pages; change font/margins and watch it re-render; toggle Fit with 2 pages; Print... shows the system dialog with "Page 1 of N" and a readable preview.
+
+---
+
+## Previous (July 28)
 
 ## Current State: v6.14.1 - Notepad (JSON-backed) with word count; tooltips on disabled icons
 
