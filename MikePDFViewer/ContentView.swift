@@ -807,6 +807,7 @@ struct ContentView: View {
         if isViewingMarkdown {
             Button {
                 markdownMode = (markdownMode == .reader) ? .quick : .reader
+                if markdownMode == .quick { ensureMarkdownAttributed() }
             } label: {
                 Image(systemName: markdownMode == .reader ? "book" : "doc.plaintext")
             }
@@ -1805,23 +1806,52 @@ struct ContentView: View {
 
     private func loadMarkdownDocument(from url: URL, generation: UInt64) {
         guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
-        do {
-            let doc = try MarkdownDocument(url: url)
+        let wantsQuickView = markdownMode == .quick
+        // Parse and render off the main thread; a mid-size file costs hundreds
+        // of ms and used to beachball the whole open.
+        Task.detached(priority: .userInitiated) {
+            do {
+                let doc = try MarkdownDocument(url: url)
+                let (_, toc) = MarkdownToHTML.render(doc.source)
+                let stats = ReadingStats(source: doc.source)
+                await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                    markdownTOC = toc
+                    markdownStats = stats
+                    isViewingMarkdown = true
+                    originalMarkdownURL = url
+                    markdownDocument = doc
+                    // The attributed string is only used by Quick view; the
+                    // default Reader never needs it, so it builds on demand
+                    // (ensureMarkdownAttributed) instead of on every open.
+                    markdownAttributed = nil
+                    markdownAnchors = [:]
+                    isLoadingDocument = false
+                    if wantsQuickView { ensureMarkdownAttributed() }
+                }
+            } catch {
+                await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                    isLoadingDocument = false
+                    errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// Build the Quick-view attributed string in the background if it hasn't
+    /// been built for the current document yet.
+    private func ensureMarkdownAttributed() {
+        guard markdownAttributed == nil, let doc = markdownDocument,
+              let url = originalMarkdownURL else { return }
+        let generation = loadGeneration
+        Task.detached(priority: .userInitiated) {
             let (styled, anchors) = doc.styledAttributedStringWithAnchors()
-            let (_, toc) = MarkdownToHTML.render(doc.source)
-            guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
-            markdownTOC = toc
-            markdownStats = ReadingStats(source: doc.source)
-            isViewingMarkdown = true
-            originalMarkdownURL = url
-            markdownDocument = doc
-            markdownAttributed = styled
-            markdownAnchors = anchors
-            isLoadingDocument = false
-        } catch {
-            guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
-            isLoadingDocument = false
-            errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
+            await MainActor.run {
+                guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                markdownAttributed = styled
+                markdownAnchors = anchors
+            }
         }
     }
 

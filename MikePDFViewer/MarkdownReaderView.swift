@@ -17,6 +17,21 @@ public enum MarkdownMode: String, CaseIterable {
     }
 }
 
+/// Warms up WebKit once at launch so the FIRST markdown/HTML open doesn't pay
+/// the WebContent-process spawn plus framework cache fill (measured at ~1.7 s
+/// cold vs ~0.4-0.9 s warm for the same document).
+@MainActor
+public enum WebKitWarmup {
+    private static var warmupView: WKWebView?
+
+    public static func prewarm() {
+        guard warmupView == nil else { return }
+        let view = WKWebView(frame: .zero)
+        view.loadHTMLString("<html><body></body></html>", baseURL: nil)
+        warmupView = view
+    }
+}
+
 /// WKWebView-based reader for markdown documents. Renders the source through
 /// MarkdownToHTML, wraps it in a styled HTML template, and displays it in a
 /// scrollable web view. Anchor links scroll within the document; external

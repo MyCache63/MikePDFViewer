@@ -42,6 +42,13 @@ extension FocusedValues {
 // MARK: - App Delegate (quit protection)
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Spawning the first WebContent process costs over a second; do it
+        // now, hidden, so the first markdown/HTML open feels instant.
+        WebKitWarmup.prewarm()
+    }
+
     /// Kept current by ContentView whenever its dirty flag changes.
     static var hasUnsavedChanges = false
 

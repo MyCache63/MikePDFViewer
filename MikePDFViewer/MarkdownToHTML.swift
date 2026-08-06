@@ -13,9 +13,32 @@ enum MarkdownToHTML {
         let slug: String
     }
 
+    /// Memo for the last render. Every open renders the same source at least
+    /// twice (once in the load path for the TOC, once in the reader view), and
+    /// theme/typography changes re-render identical source; this makes the
+    /// repeats free. One entry is enough.
+    private static let cacheLock = NSLock()
+    private static var cachedSource: String?
+    private static var cachedResult: (html: String, toc: [TOCEntry])?
+
     /// Render markdown body HTML and a parallel TOC list.
     /// The result is body content only (no `<html>`/`<head>`); callers wrap it.
     static func render(_ source: String) -> (html: String, toc: [TOCEntry]) {
+        cacheLock.lock()
+        if source == cachedSource, let cached = cachedResult {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+        let result = renderUncached(source)
+        cacheLock.lock()
+        cachedSource = source
+        cachedResult = result
+        cacheLock.unlock()
+        return result
+    }
+
+    private static func renderUncached(_ source: String) -> (html: String, toc: [TOCEntry]) {
         let opts = AttributedString.MarkdownParsingOptions(
             allowsExtendedAttributes: true,
             interpretedSyntax: .full,

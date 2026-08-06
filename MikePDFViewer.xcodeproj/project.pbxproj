@@ -457,7 +457,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.15.0;
+				MARKETING_VERSION = 6.15.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -485,7 +485,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.15.0;
+				MARKETING_VERSION = 6.15.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
