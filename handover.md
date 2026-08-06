@@ -1,4 +1,20 @@
-# MikePDFViewer Handover - July 30, 2026
+# MikePDFViewer Handover - August 6, 2026
+
+## Current State: v6.15.1 - Open-speed fixes (measured before/after)
+
+**BUILD STATUS:** v6.15.1 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting device testing
+**Safety tag:** `before-open-speed-2026-08-06`
+**Numbers:** `OpenSpeed_BeforeAfter_v6.15.1_Aug06.md` (before/after tables)
+
+### Aug 6 - v6.15.1 Document-open lag
+
+Michael reported lag opening documents (example: a 6 KB .md). Benchmarked the open path with the app's own sources (`scripts/benchmark_open_speed/main.swift`; compile: `swiftc -O -o benchmark main.swift MikePDFViewer/Markdown{Document,ToHTML,ReaderView,ReaderSettings,Typography,TOCSidebar,SearchController}.swift`, run with a .md path). Found: WebKit first-render ~1.7 s cold; Quick-view attributed build 0.08-1.8 s ON MAIN even though Reader mode never uses it; HTML rendered twice per open; bookmark I/O on main. Fixes: markdown load fully async; Quick-view build deferred to `ensureMarkdownAttributed()` (on switch to Quick); `MarkdownToHTML.render` memoizes last source; `RecentFilesManager.add` bookmarks on background queue; `WebKitWarmup.prewarm()` in new `applicationDidFinishLaunching`. Files: ContentView, MarkdownToHTML, MarkdownReaderView, RecentFilesManager, MikePDFViewerApp, pbxproj (6.15.1).
+
+**Known follow-ups:** same async treatment could go to EML/txt paths; Swift-6 sendability warning on NSAttributedString capture in ensureMarkdownAttributed (harmless in Swift 5 mode).
+
+---
+
+## Previous (July 30)
 
 ## Current State: v6.15.0 - Markdown print preview sheet + real pagination
 
