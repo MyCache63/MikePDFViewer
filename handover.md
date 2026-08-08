@@ -1,10 +1,22 @@
-# MikePDFViewer Handover - August 6, 2026
+# MikePDFViewer Handover - August 8, 2026 (checkpoint before terminal restart)
 
-## Current State: v6.15.1 - Open-speed fixes (measured before/after)
+## Current State: v6.15.1 - Open-speed fixes shipped; everything committed and pushed
 
-**BUILD STATUS:** v6.15.1 builds (Release), installed to `/Applications/MikePDFViewer.app`, awaiting device testing
-**Safety tag:** `before-open-speed-2026-08-06`
+**Branch/worktree:** `main` only, no worktrees. Working tree clean except Michael's two screenshots (left untracked on purpose).
+**BUILD STATUS:** v6.15.1 builds (Release), installed to `/Applications/MikePDFViewer.app`. NOTHING since v6.9.0 is device-confirmed; no `good-` tags yet for v6.12.x-v6.15.x.
+**Safety tags:** `before-open-speed-2026-08-06`, `before-print-preview-2026-07-30`, `before-notepad-2026-07-28`, `before-print-md-txt-json-2026-07-27`
 **Numbers:** `OpenSpeed_BeforeAfter_v6.15.1_Aug06.md` (before/after tables)
+
+**EXACT NEXT STEP:** Michael quits (Cmd+Q) and relaunches the app, confirms v6.15.1 under the title, then device-tests in this order: (1) open the MTN .md - should be fast, no beachball; (2) Cmd+P a long .md - Print Layout sheet with multi-page preview, fit-to-pages; (3) Notepad icon + word count; (4) hover tooltips on grayed-out icons; (5) v6.12 safety behaviors (Cmd+S on converted file routes to Save As, unsaved-changes prompts). On his confirmation: commit nothing, just tag `good-<feature>-<date>` per feature and mark here. After that, the next approved-work candidates (NOT yet approved): find-next/prev cycling in PDFs, Cmd+F in HTML/QuickLook, async EML/txt loads, window-close dirty guard, multi-window tabs.
+
+**Decisions made (this cycle):**
+- Markdown print pagination via WKWebView `printOperation` save-to-file on an offscreen window (Apple forum 705138 recipe); REJECTED slicing the single tall createPDF page into sheets (would cut text lines in half).
+- Fit-to-pages implemented as CSS `html { zoom }` binary search (floor 35%); REJECTED NSPrintInfo.scalingFactor (interacts badly with fit-width pagination).
+- Quick-view attributed string build deferred to on-demand (`ensureMarkdownAttributed`); REJECTED keeping it eager (0.08-1.8 s main-thread cost on every open, unused by default Reader mode).
+- WebKit prewarm at launch (hidden WKWebView) to absorb the ~1.7 s first WebContent spawn.
+- Tooltips: replaced SwiftUI `.help` with AppKit `NSView.toolTip` background (`.tooltip()`), because `.help` never shows on disabled controls.
+- Notes stored as one pretty-printed `notes.json` in container Documents/Notes for external RAG; REJECTED per-note files (harder to index) and user-picked folder (extra sandbox bookmark complexity, can add later).
+- Default app for .txt/.json set via `LSSetDefaultRoleHandlerForContentType` (`scripts/set_default_apps.swift`, already run on this Mac).
 
 ### Aug 6 - v6.15.1 Document-open lag
 
