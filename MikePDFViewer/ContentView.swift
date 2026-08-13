@@ -49,7 +49,12 @@ struct ContentView: View {
     @State private var showExtractSheet = false
     @State private var showSplitView = false
     @State private var splitCurrentPage: Int = 0
-    @State private var showPresentation = false
+    /// Full-screen presentation runs in its own borderless window (see
+    /// PresentationWindowController), not a sheet, so it can cover the screen.
+    private func startPresentation() {
+        guard let document = pdfDocument else { return }
+        PresentationWindowController.shared.present(document: document, startPage: currentPage)
+    }
     @State private var showSignatureSheet = false
     @State private var showRedactConfirm = false
     @State private var showPasswordSheet = false
@@ -383,7 +388,7 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
                 guard isKeyScene else { return }
-                if pdfDocument != nil { showPresentation = true }
+                startPresentation()
             }
             .modifier(FindCommandsListener(
                 onShowFind: { guard isKeyScene else { return }; handleShowFindCommand() },
@@ -617,11 +622,6 @@ struct ContentView: View {
                 }
             } else {
                 pdfContentWithEMLSidebar
-            }
-        }
-        .sheet(isPresented: $showPresentation) {
-            if let document = pdfDocument {
-                PresentationView(document: document, startPage: currentPage)
             }
         }
     }
@@ -956,10 +956,10 @@ struct ContentView: View {
         }
         .tooltip(showSplitView ? "Close Split View" : "Split View").disabled(pdfDocument == nil)
 
-        Button { showPresentation = true } label: {
+        Button { startPresentation() } label: {
             Image(systemName: "play.rectangle")
         }
-        .tooltip("Presentation Mode").disabled(pdfDocument == nil)
+        .tooltip("Full Screen Presentation (Cmd+L)").disabled(pdfDocument == nil)
     }
 
     @ViewBuilder

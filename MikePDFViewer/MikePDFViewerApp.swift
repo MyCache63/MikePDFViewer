@@ -327,10 +327,11 @@ struct MikePDFViewerApp: App {
                 .keyboardShortcut("2", modifiers: [.command, .option])
                 .disabled(focusedDocument == nil)
 
-                Button("Presentation Mode") {
+                // Cmd+L matches Adobe Acrobat's Full Screen Mode shortcut.
+                Button("Full Screen Presentation") {
                     NotificationCenter.default.post(name: .pdfStartPresentation, object: nil)
                 }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .keyboardShortcut("l", modifiers: .command)
                 .disabled(focusedDocument == nil)
             }
         }
@@ -339,6 +340,10 @@ struct MikePDFViewerApp: App {
             NotepadView()
         }
         .defaultSize(width: 820, height: 520)
+
+        Settings {
+            AppSettingsView()
+        }
     }
 
     // MARK: - Actions

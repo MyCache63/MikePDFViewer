@@ -22,6 +22,7 @@
 		AA000096 /* NotesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000097 /* NotesStore.swift */; };
 		AA000098 /* NotepadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000099 /* NotepadView.swift */; };
 		AA00009A /* MarkdownPrintSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00009B /* MarkdownPrintSheet.swift */; };
+		AA00009C /* AppSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00009D /* AppSettingsView.swift */; };
 		AA00000A /* OCRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* OCRView.swift */; };
 		AA00000B /* DOCXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000023 /* DOCXExporter.swift */; };
 		AA00000C /* AnnotationToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000024 /* AnnotationToolbar.swift */; };
@@ -77,6 +78,7 @@
 		AA000097 /* NotesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesStore.swift; sourceTree = "<group>"; };
 		AA000099 /* NotepadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotepadView.swift; sourceTree = "<group>"; };
 		AA00009B /* MarkdownPrintSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPrintSheet.swift; sourceTree = "<group>"; };
+		AA00009D /* AppSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsView.swift; sourceTree = "<group>"; };
 		AA000022 /* OCRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRView.swift; sourceTree = "<group>"; };
 		AA000023 /* DOCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXExporter.swift; sourceTree = "<group>"; };
 		AA000024 /* AnnotationToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationToolbar.swift; sourceTree = "<group>"; };
@@ -152,6 +154,7 @@
 				AA000097 /* NotesStore.swift */,
 				AA000099 /* NotepadView.swift */,
 				AA00009B /* MarkdownPrintSheet.swift */,
+				AA00009D /* AppSettingsView.swift */,
 				AA000022 /* OCRView.swift */,
 				AA000023 /* DOCXExporter.swift */,
 				AA000024 /* AnnotationToolbar.swift */,
@@ -281,6 +284,7 @@
 				AA000096 /* NotesStore.swift in Sources */,
 				AA000098 /* NotepadView.swift in Sources */,
 				AA00009A /* MarkdownPrintSheet.swift in Sources */,
+				AA00009C /* AppSettingsView.swift in Sources */,
 				AA00000A /* OCRView.swift in Sources */,
 				AA00000B /* DOCXExporter.swift in Sources */,
 				AA00000C /* AnnotationToolbar.swift in Sources */,
@@ -457,7 +461,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.15.1;
+				MARKETING_VERSION = 6.16.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -485,7 +489,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 6.15.1;
+				MARKETING_VERSION = 6.16.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mikeashe.MikePDFViewer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
