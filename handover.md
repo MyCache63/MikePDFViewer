@@ -1,6 +1,26 @@
-# MikePDFViewer Handover - August 8, 2026 (checkpoint before terminal restart)
+# MikePDFViewer Handover - August 13, 2026
 
-## Current State: v6.15.1 - Open-speed fixes shipped; everything committed and pushed
+## Current State: v6.16.0 - True full-screen presentation + Settings window
+
+**Branch/worktree:** `main` only, no worktrees. **BUILD:** v6.16.0 Release, installed to /Applications, not device-tested.
+**Safety tag:** `before-fullscreen-presentation-2026-08-13`
+
+### Aug 13 - v6.16.0 Full-screen presentation (Acrobat parity) + Preferences
+
+Michael asked how to show a slide-deck PDF full screen with arrow-key advance, "consistent with Acrobat". Presentation Mode already existed (toolbar play icon) but was a `.sheet` (window-sized, not full screen), had no Escape, and leaked an `NSEvent.addLocalMonitorForEvents` that kept eating arrow keys after dismissal.
+
+- `PresentationWindowController` (in PresentationView.swift): borderless window at the host window's screen frame, level `.mainMenu+1`, dock/menu bar hidden; level drops on `windowDidResignKey` so Cmd+Tab can't trap the user. `PresentationWindow` overrides `canBecomeKey` (borderless windows otherwise get no key events).
+- Key map per Acrobat: next Right/Down/Return/PageDown/Space, prev Left/Up/Shift+Return/PageUp, Home/End, Esc or Cmd+L exits. Menu shortcut moved Shift+Cmd+P -> **Cmd+L**. Click advances, Shift+click back.
+- Controls (page counter, close X) auto-fade after 2.5 s, return on mouse move; cursor hides while advancing.
+- **New Settings scene (Cmd+,)**, `AppSettingsView.swift`: Presentation tab = border fill color picker (the letterbox/pillarbox fill when slide aspect != screen; default black, hex-persisted under `presentation-fill-color`), General tab = reopen-last-file, thumbnail size.
+
+**Decisions:** borderless window + level management chosen over `toggleFullScreen` (native full screen creates a separate Space and animates ~1 s; Keynote-style is snappier) and over `enterFullScreenMode` (no clean SwiftUI overlay path). Fill color stored as hex string because Color is not AppStorage-encodable.
+
+**Next step:** Michael device-tests v6.16.0 with Kore_Citi_Fraud_DemoReview_v01.0.1_Aug13.pdf: Cmd+L, arrows/space, Esc, then Cmd+, to change the fill color. Everything from v6.12 through v6.16 is still awaiting his device confirmation and `good-` tags.
+
+---
+
+## Previous: v6.15.1 - Open-speed fixes
 
 **Branch/worktree:** `main` only, no worktrees. Working tree clean except Michael's two screenshots (left untracked on purpose).
 **BUILD STATUS:** v6.15.1 builds (Release), installed to `/Applications/MikePDFViewer.app`. NOTHING since v6.9.0 is device-confirmed; no `good-` tags yet for v6.12.x-v6.15.x.
