@@ -935,12 +935,12 @@ struct ContentView: View {
         Button { NotificationCenter.default.post(name: .pdfRotateLeft, object: nil) } label: {
             Image(systemName: "rotate.left")
         }
-        .tooltip("Rotate Left").disabled(pdfDocument == nil)
+        .tooltip("Rotate Left (Cmd+Option+L)").disabled(pdfDocument == nil)
 
         Button { NotificationCenter.default.post(name: .pdfRotateRight, object: nil) } label: {
             Image(systemName: "rotate.right")
         }
-        .tooltip("Rotate Right").disabled(pdfDocument == nil)
+        .tooltip("Rotate Right (Cmd+Option+R)").disabled(pdfDocument == nil)
 
         Picker("", selection: $displayMode) {
             Text("Continuous").tag(PDFDisplayMode.singlePageContinuous)

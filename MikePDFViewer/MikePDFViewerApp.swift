@@ -307,16 +307,18 @@ struct MikePDFViewerApp: App {
 
                 Divider()
 
+                // Rotate moved off Preview's Cmd+R / Cmd+L so Cmd+L can be
+                // Full Screen, matching Acrobat (Michael's call, Aug 13).
                 Button("Rotate Right") {
                     NotificationCenter.default.post(name: .pdfRotateRight, object: nil)
                 }
-                .keyboardShortcut("r", modifiers: [.command])
+                .keyboardShortcut("r", modifiers: [.command, .option])
                 .disabled(focusedDocument == nil)
 
                 Button("Rotate Left") {
                     NotificationCenter.default.post(name: .pdfRotateLeft, object: nil)
                 }
-                .keyboardShortcut("l", modifiers: [.command])
+                .keyboardShortcut("l", modifiers: [.command, .option])
                 .disabled(focusedDocument == nil)
 
                 Divider()
