@@ -39,6 +39,8 @@ let package = Package(
                 "OCRService.swift",
                 "OCRView.swift",
                 "OpenWithMenu.swift",
+                // App-only window management (multi-window focus reuse).
+                "OpenDocumentRegistry.swift",
                 "PDFCompareService.swift",
                 "PDFCompareView.swift",
                 "PDFKitView.swift",

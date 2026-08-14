@@ -10,6 +10,8 @@ struct ContentView: View {
     /// same file and shares edits - the multi-window stale-artifact bug.
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.openWindow) private var openWindow
+    @State private var hostWindow: NSWindow?
+    @AppStorage("reuse-open-windows") private var reuseOpenWindows: Bool = true
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @State private var pdfDocument: PDFDocument?
     @State private var currentPage: Int = 0
@@ -376,6 +378,7 @@ struct ContentView: View {
                 guard isKeyScene else { return }
                 if let url = notification.userInfo?["url"] as? URL {
                     recentFiles.add(url)
+                    if raiseWindowAlreadyShowing(url) { return }
                     pdfURL = url
                 }
             }
@@ -407,7 +410,39 @@ struct ContentView: View {
                 }
             }
             .onAppear { handleAppear() }
-            .onOpenURL { url in recentFiles.add(url); pdfURL = url }
+            .onOpenURL { url in
+                recentFiles.add(url)
+                if raiseWindowAlreadyShowing(url) { return }
+                pdfURL = url
+            }
+            .background(WindowAccessor { window in
+                guard hostWindow !== window else { return }
+                hostWindow = window
+                OpenDocumentRegistry.shared.update(url: pdfURL, for: window)
+            })
+            .onDisappear { OpenDocumentRegistry.shared.forget(hostWindow) }
+    }
+
+    /// If this file is already open somewhere, bring that window forward and
+    /// report true so the caller skips loading a second copy.
+    private func raiseWindowAlreadyShowing(_ url: URL) -> Bool {
+        guard reuseOpenWindows else { return false }
+
+        // Already the front document in THIS window: nothing to load.
+        if let current = pdfURL,
+           OpenDocumentRegistry.key(for: current) == OpenDocumentRegistry.key(for: url) {
+            hostWindow?.makeKeyAndOrderFront(nil)
+            return true
+        }
+
+        guard let existing = OpenDocumentRegistry.shared.window(showing: url,
+                                                               excluding: hostWindow) else {
+            return false
+        }
+        if existing.isMiniaturized { existing.deminiaturize(nil) }
+        existing.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
     }
 
     private func handleAppear() {
@@ -1513,6 +1548,8 @@ struct ContentView: View {
         }
         documentDirty = false
         lastLoadedURL = url
+        // Keep the registry in step so another window can find this document.
+        OpenDocumentRegistry.shared.update(url: url, for: hostWindow)
 
         // Invalidate any in-flight async load from a previous open.
         loadGeneration &+= 1

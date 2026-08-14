@@ -48,11 +48,21 @@ private struct PresentationSettingsTab: View {
 
 private struct GeneralSettingsTab: View {
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
+    @AppStorage("reuse-open-windows") private var reuseOpenWindows = true
     @AppStorage("thumbnail-max-width") private var thumbnailMaxWidth: Double = 200
 
     var body: some View {
         Form {
             Toggle("Reopen last file on launch", isOn: $reopenLastDocument)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Bring the existing window forward instead of reopening",
+                       isOn: $reuseOpenWindows)
+                Text("When a file is already open, opening it again raises that window rather than loading a second copy.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Slider(value: $thumbnailMaxWidth, in: 80...320) {
                     Text("Sidebar thumbnail size")
