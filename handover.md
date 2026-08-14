@@ -36,7 +36,22 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.16.0 - True full-screen presentation + Settings window
+## Current State: v6.17.0 - Reuse the window when a document is already open
+
+**BUILD:** v6.17.0 Release + `swift build` of the kit both succeed; installed to /Applications; not device-tested.
+**Safety tag:** `before-fullscreen-presentation-2026-08-13`
+
+### Aug 14 - v6.17.0 Raise the existing window instead of reopening
+
+Michael asked that opening an already-open document pop that window to the front. New `OpenDocumentRegistry.swift` (app-only, excluded in Package.swift per the MC3 rule above): weak NSWindow -> URL map, pruned on lookup; keys are `resolvingSymlinksInPath().standardizedFileURL`. `WindowAccessor` gives ContentView its NSWindow. All four open paths (File > Open, Recent, EML attachment, Finder `onOpenURL`) call `raiseWindowAlreadyShowing(_:)`: same window = no reload, other window = deminiaturize + makeKeyAndOrderFront + activate. Settings > General has an off switch (`reuse-open-windows`, default on).
+
+### Aug 13 - v6.16.1 Cmd+L collision fix
+
+v6.16.0's Full Screen item never fired: Cmd+L was already Rotate Left (Preview convention) and is declared first in the View menu. Rotate moved to **Cmd+Option+L / Cmd+Option+R**; Cmd+L is Full Screen Presentation. (The Cmd+Shift+L Loom dialog Michael saw is Loom's global hotkey, unrelated to this app.)
+
+---
+
+## Previous: v6.16.0 - True full-screen presentation + Settings window
 
 **Branch/worktree:** `main` only, no worktrees. **BUILD:** v6.16.0 Release, installed to /Applications, not device-tested.
 **Safety tag:** `before-fullscreen-presentation-2026-08-13`
