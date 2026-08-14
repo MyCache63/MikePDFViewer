@@ -1,5 +1,41 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Aug 14 - NOTE FROM THE MC3 SESSION: package build was broken, now fixed
+
+Not your app code, and nothing you shipped was wrong. Your v6.16.x work is intact
+and the app target still builds clean (verified today).
+
+**What happened:** this repo also ships a Swift package, `MikePDFViewerKit`, built
+from the same `MikePDFViewer/` folder with app-only files listed in `exclude:` in
+`Package.swift`. **Mission Control 3 embeds that package** (`relativePath =
+../MikePDFViewer`), so when the kit stops compiling, MC3 stops building too.
+
+v6.16.0 added `AppSettingsView.swift` (the Cmd+, Preferences window), which
+references `PresentationAppearance` defined in `PresentationView.swift`.
+`PresentationView.swift` is excluded from the kit (correctly, it is app-only), but
+`AppSettingsView.swift` was not, so inside the package it referenced a type that
+was not in the target:
+
+```
+AppSettingsView.swift:19  cannot find 'PresentationAppearance' in scope
+AppSettingsView.swift:24  incorrect argument label (have 'hexString:', expected 'named:')
+AppSettingsView.swift:25  value of type 'NSColor' has no member 'hexString'
+```
+
+The app target compiled fine throughout (it has both files), which is why this was
+invisible from here.
+
+**Fix applied:** added `"AppSettingsView.swift"` to the `exclude:` list in
+`Package.swift`, next to the other app-only views. Safe because the only other file
+referencing it, `MikePDFViewerApp.swift`, is already excluded. Verified after the
+change: MikePDFViewer app target BUILD SUCCEEDED, and MC3 BUILD SUCCEEDED.
+
+**Rule of thumb going forward:** any new file that touches presentation mode,
+settings, annotation, OCR, redaction or signatures is app-only and belongs in the
+`exclude:` list. If you add a file and are unsure, run
+`swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
+seconds and saves MC3 from a broken build.
+
 ## Current State: v6.16.0 - True full-screen presentation + Settings window
 
 **Branch/worktree:** `main` only, no worktrees. **BUILD:** v6.16.0 Release, installed to /Applications, not device-tested.

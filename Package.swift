@@ -27,6 +27,11 @@ let package = Package(
                 "ContentView.swift",
                 // App-only features (annotation, signature, OCR, redaction, etc.)
                 "AnnotationToolbar.swift",
+                // The Preferences window (Cmd+,). App-only, and it references
+                // PresentationAppearance from the already-excluded
+                // PresentationView.swift, so leaving it in broke the kit build
+                // (and therefore Mission Control 3, which embeds this package).
+                "AppSettingsView.swift",
                 "AttachmentsSidebar.swift",
                 "BookmarkManager.swift",
                 "DOCXExporter.swift",
