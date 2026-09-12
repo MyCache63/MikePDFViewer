@@ -36,7 +36,21 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.17.0 - Reuse the window when a document is already open
+## Current State: v6.18.0 - Export menu (PDF / Word / PNG)
+
+**BUILD:** v6.18.0 Release + `swift build` of the kit both succeed; installed to /Applications; not device-tested.
+**Safety tag:** `before-export-2026-09-12`
+**Detail:** `export_menu_v6.18.0_seymour.md`
+
+### Sep 12 - v6.18.0 File > Export + toolbar Export menu
+
+Michael couldn't find a quick way to export the open document. New `DocumentExporter.swift` (app-only, excluded in Package.swift) plus `exportDocument(_:)` in ContentView. Toolbar Export menu sits after Share; File > Export submenu posts `.pdfExport` (userInfo format) handled by the key window. PDF: PDF mode saves a copy, Markdown via `convertForPrint`, text via `<pre>` HTML through `PaginatedHTMLToPDF`, .docx via `DOCXToPDFConverter`. Word: .docx source copied; otherwise NSAttributedString (PDF via `page.attributedString`) written with `NSAttributedString.DocumentType.officeOpenXML` (verified headlessly as a valid zip). PNG: `ExportImagesView` now takes `exportImagesDocument ?? pdfDocument`, so it works in every mode. PPTX/Keynote quick views alert (no converter). Decision: AppKit's officeOpenXML writer over the OCR-oriented `DOCXExporter` because it preserves fonts/bold from attributed text and needs no page-result plumbing.
+
+**Next step:** Michael tests Export on a .docx and an .md, then confirms the v6.12-v6.18 backlog so `good-` tags can go on.
+
+---
+
+## Previous: v6.17.0 - Reuse the window when a document is already open
 
 **BUILD:** v6.17.0 Release + `swift build` of the kit both succeed; installed to /Applications; not device-tested.
 **Safety tag:** `before-fullscreen-presentation-2026-08-13`
