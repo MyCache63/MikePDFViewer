@@ -20,6 +20,8 @@ extension Notification.Name {
     static let pdfExtractPages = Notification.Name("pdfExtractPages")
     static let pdfMakeSearchable = Notification.Name("pdfMakeSearchable")
     static let pdfGoToPage = Notification.Name("pdfGoToPage")
+    /// userInfo["format"] is an ExportFormat rawValue (pdf / docx / png).
+    static let pdfExport = Notification.Name("pdfExport")
     // Posted after a successful in-place save or Save As, so the host can
     // clear its unsaved-changes flag.
     static let pdfDocumentSaved = Notification.Name("pdfDocumentSaved")

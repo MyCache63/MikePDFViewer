@@ -117,6 +117,17 @@ struct MikePDFViewerApp: App {
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(focusedDocument == nil)
 
+                // Works in every viewer mode (PDF, Markdown, text, Word), so it
+                // is not gated on focusedDocument; ContentView checks canExport.
+                Menu("Export") {
+                    ForEach([ExportFormat.pdf, .docx, .png], id: \.self) { format in
+                        Button(format.menuTitle) {
+                            NotificationCenter.default.post(name: .pdfExport, object: nil,
+                                                            userInfo: ["format": format.rawValue])
+                        }
+                    }
+                }
+
                 Divider()
 
                 Menu("Open With") {

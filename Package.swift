@@ -41,6 +41,7 @@ let package = Package(
                 "OpenWithMenu.swift",
                 // App-only window management (multi-window focus reuse).
                 "OpenDocumentRegistry.swift",
+                "DocumentExporter.swift",
                 "PDFCompareService.swift",
                 "PDFCompareView.swift",
                 "PDFKitView.swift",

@@ -63,6 +63,8 @@ struct ContentView: View {
     @State private var showEncryptSheet = false
     @State private var showWatermarkSheet = false
     @State private var showExportImages = false
+    /// Non-PDF modes convert to a PDF first; it is held here for the image sheet.
+    @State private var exportImagesDocument: PDFDocument?
     @State private var showCompareSheet = false
     @State private var pendingSignatureImage: NSImage?
     @State private var annotationEditingMode = false
@@ -266,8 +268,8 @@ struct ContentView: View {
                     WatermarkSheet(document: document)
                 }
             }
-            .sheet(isPresented: $showExportImages) {
-                if let document = pdfDocument {
+            .sheet(isPresented: $showExportImages, onDismiss: { exportImagesDocument = nil }) {
+                if let document = exportImagesDocument ?? pdfDocument {
                     ExportImagesView(document: document)
                 }
             }
@@ -361,6 +363,13 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
                 guard isKeyScene else { return }
                 handlePrint()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfExport)) { notification in
+                guard isKeyScene else { return }
+                if let raw = notification.userInfo?["format"] as? String,
+                   let format = ExportFormat(rawValue: raw) {
+                    exportDocument(format)
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfGoToPage)) { _ in
                 guard isKeyScene else { return }
@@ -789,6 +798,16 @@ struct ContentView: View {
             ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
                 .tooltip("Share PDF")
         }
+
+        Menu {
+            Button(ExportFormat.pdf.menuTitle) { exportDocument(.pdf) }
+            Button(ExportFormat.docx.menuTitle) { exportDocument(.docx) }
+            Button(ExportFormat.png.menuTitle) { exportDocument(.png) }
+        } label: {
+            Image(systemName: "square.and.arrow.up.on.square")
+        }
+        .tooltip("Export as PDF, Word, or PNG (File > Export)")
+        .disabled(!canExport)
 
         Button { openWindow(id: "notepad") } label: { NotepadIconView() }
             .tooltip("Notepad (Shift+Cmd+N)")
@@ -1685,6 +1704,105 @@ struct ContentView: View {
         default:
             return NSFont(name: txtFontName, size: txtFontSize)
                 ?? .monospacedSystemFont(ofSize: txtFontSize, weight: .regular)
+        }
+    }
+
+    // MARK: - Export
+
+    private var canExport: Bool {
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingQuickLook
+    }
+
+    private var exportStem: String {
+        (openWithSourceURL ?? pdfURL)?.deletingPathExtension().lastPathComponent ?? "Untitled"
+    }
+
+    /// File > Export and the toolbar Export menu. PDF and PNG go through a
+    /// paginated PDF of the current view; Word comes from the text itself.
+    private func exportDocument(_ format: ExportFormat) {
+        guard canExport else { return }
+        if isViewingQuickLook, originalDOCXURL == nil {
+            errorAlertMessage = "Export isn't available for PowerPoint or Keynote files yet. Open the file in its own app to export it."
+            return
+        }
+        switch format {
+        case .docx:
+            exportAsDOCX()
+        case .pdf, .png:
+            Task {
+                do {
+                    let pdf = try await exportablePDF()
+                    if format == .pdf {
+                        exportPDF(pdf)
+                    } else {
+                        exportImagesDocument = pdf
+                        showExportImages = true
+                    }
+                } catch {
+                    errorAlertMessage = "Could not prepare \(exportStem) for export: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// A paginated PDF of whatever is on screen, converting first when needed.
+    private func exportablePDF() async throws -> PDFDocument {
+        if let doc = pdfDocument { return doc }
+        if isViewingMarkdown, let md = markdownDocument, let url = originalMarkdownURL {
+            return try await MarkdownToPDFConverter.convertForPrint(
+                source: md.source, sourceURL: url,
+                theme: markdownTheme, typography: markdownTypography,
+                marginInches: 0.5)
+        }
+        if isViewingText {
+            let html = DocumentExporter.html(forPlainText: textFileContent, font: textFileFont)
+            let data = try await PaginatedHTMLToPDF.render(html: html, marginInches: 0.5)
+            guard let doc = PDFDocument(data: data), doc.pageCount > 0 else {
+                throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
+            }
+            return doc
+        }
+        if let docxURL = originalDOCXURL {
+            return try await DOCXToPDFConverter.convert(url: docxURL).document
+        }
+        throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
+    }
+
+    private func exportPDF(_ document: PDFDocument) {
+        guard let url = DocumentExporter.chooseDestination(
+            suggestedName: exportStem + ".pdf", type: .pdf, near: openWithSourceURL) else { return }
+        if !document.write(to: url) {
+            errorAlertMessage = "Could not write \(url.lastPathComponent). Check that the folder is writable."
+        }
+    }
+
+    private func exportAsDOCX() {
+        guard let docxType = UTType(filenameExtension: "docx"),
+              let url = DocumentExporter.chooseDestination(
+                suggestedName: exportStem + ".docx", type: docxType, near: openWithSourceURL) else { return }
+        do {
+            if let source = originalDOCXURL {
+                // Already a Word file: hand over a copy. The save panel has
+                // already asked about replacing an existing file.
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.removeItem(at: url)
+                }
+                try FileManager.default.copyItem(at: source, to: url)
+                return
+            }
+            let attributed: NSAttributedString
+            if isViewingMarkdown, let md = markdownDocument {
+                attributed = md.styledAttributedStringWithAnchors().0
+            } else if isViewingText {
+                attributed = textFileAttributed
+            } else if let pdf = pdfDocument {
+                attributed = DocumentExporter.attributedString(from: pdf)
+            } else {
+                return
+            }
+            try DocumentExporter.writeDOCX(attributed, to: url)
+        } catch {
+            errorAlertMessage = "Could not export \(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 
