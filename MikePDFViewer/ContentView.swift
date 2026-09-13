@@ -28,6 +28,8 @@ struct ContentView: View {
     @State private var makeSearchableCancelFlag = SearchableOCRService.CancelFlag()
     @State private var makeSearchableMessage: String?
     @State private var errorAlertMessage: String?
+    /// File the sandbox refused to read; drives the Permission Needed alert.
+    @State private var accessRequestURL: URL?
 
     // Unsaved-changes tracking: set on any document mutation, cleared on
     // load and successful save. Guards both open-another-file and app quit.
@@ -419,6 +421,7 @@ struct ContentView: View {
                 }
             }
             .onAppear { handleAppear() }
+            .modifier(AccessRequestAlert(url: $accessRequestURL, onGrant: grantAccessAndReload))
             .onOpenURL { url in
                 recentFiles.add(url)
                 if raiseWindowAlreadyShowing(url) { return }
@@ -1669,13 +1672,17 @@ struct ContentView: View {
 
     private func loadTextDocument(from url: URL, generation: UInt64) {
         guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
-        let content: String
-        if let utf8 = try? String(contentsOf: url, encoding: .utf8) {
-            content = utf8
-        } else if let latin1 = try? String(contentsOf: url, encoding: .isoLatin1) {
-            content = latin1
-        } else {
-            content = "Could not read \(url.lastPathComponent) as text."
+        var content: String?
+        var readError: Error?
+        do {
+            content = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            readError = error
+            content = try? String(contentsOf: url, encoding: .isoLatin1)
+        }
+        guard let content else {
+            handleOpenFailure(url: url, error: readError)
+            return
         }
         isViewingText = true
         originalTextURL = url
@@ -1704,6 +1711,58 @@ struct ContentView: View {
         default:
             return NSFont(name: txtFontName, size: txtFontSize)
                 ?? .monospacedSystemFont(ofSize: txtFontSize, weight: .regular)
+        }
+    }
+
+    // MARK: - Open failures and sandbox permission recovery
+
+    /// Cocoa 257 / POSIX EACCES mean the sandbox has no grant for this path
+    /// (typically a Recent or reopen-at-launch file whose security-scoped
+    /// bookmark is missing). Those get the Grant Access flow; anything else
+    /// is a plain error alert.
+    private func handleOpenFailure(url: URL, error: Error?) {
+        isLoadingDocument = false
+        let denied: Bool
+        if let error {
+            let ns = error as NSError
+            let cocoaDenied = ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoPermissionError
+            let posixDenied = ns.domain == NSPOSIXErrorDomain && (ns.code == Int(EACCES) || ns.code == Int(EPERM))
+            let underlying = (ns.userInfo[NSUnderlyingErrorKey] as? NSError)
+            let underlyingDenied = underlying.map { $0.domain == NSPOSIXErrorDomain && ($0.code == Int(EACCES) || $0.code == Int(EPERM)) } ?? false
+            denied = cocoaDenied || posixDenied || underlyingDenied
+        } else {
+            denied = FileManager.default.fileExists(atPath: url.path)
+                && !FileManager.default.isReadableFile(atPath: url.path)
+        }
+        AppLog.write("Open FAILED \(url.path) denied=\(denied) error=\(error.map { String(describing: $0) } ?? "nil")")
+        if denied {
+            accessRequestURL = url
+        } else if let error {
+            errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
+        } else {
+            errorAlertMessage = "Could not open \(url.lastPathComponent). The file may be missing, unreadable, or not a valid PDF."
+        }
+    }
+
+    /// Standard sandbox recovery: an open panel pointed at the file. The
+    /// user's click is the grant; the resulting add() stores a bookmark so it
+    /// never has to be asked again for this file.
+    private func grantAccessAndReload(_ url: URL) {
+        let panel = NSOpenPanel()
+        panel.message = "Click Open to let MikePDFViewer read \(url.lastPathComponent). It will remember this file afterwards."
+        panel.prompt = "Open"
+        panel.directoryURL = url.deletingLastPathComponent()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let chosen = panel.url else { return }
+        AppLog.write("Access granted via panel for \(chosen.path)")
+        recentFiles.add(chosen)
+        if OpenDocumentRegistry.key(for: chosen) == OpenDocumentRegistry.key(for: url) {
+            // Same URL as pdfURL, so onChange would not fire; reload directly.
+            loadDocument(from: chosen)
+        } else {
+            pdfURL = chosen
         }
     }
 
@@ -1987,8 +2046,7 @@ struct ContentView: View {
             } catch {
                 await MainActor.run {
                     guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
-                    isLoadingDocument = false
-                    errorAlertMessage = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
+                    handleOpenFailure(url: url, error: error)
                 }
             }
         }
@@ -2028,7 +2086,7 @@ struct ContentView: View {
                     showPasswordSheet = true
                 }
                 if doc == nil {
-                    errorAlertMessage = "Could not open \(url.lastPathComponent). The file may be missing, unreadable, or not a valid PDF."
+                    handleOpenFailure(url: url, error: nil)
                 }
             }
         }
@@ -2226,6 +2284,30 @@ class KeyCatcherView: NSView {
             onEscape?()
         } else {
             super.keyDown(with: event)
+        }
+    }
+}
+
+// MARK: - Permission Needed alert
+
+/// Separate modifier so the giant body chain stays type-checkable.
+private struct AccessRequestAlert: ViewModifier {
+    @Binding var url: URL?
+    let onGrant: (URL) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert("Permission Needed",
+                      isPresented: Binding(get: { url != nil },
+                                           set: { if !$0 { url = nil } })) {
+            Button("Grant Access…") {
+                if let target = url {
+                    url = nil
+                    DispatchQueue.main.async { onGrant(target) }
+                }
+            }
+            Button("Cancel", role: .cancel) { url = nil }
+        } message: {
+            Text("macOS hasn't let MikePDFViewer read \(url?.lastPathComponent ?? "this file") since the app was last launched. Click Grant Access, then Open in the panel, and the app will remember it.")
         }
     }
 }

@@ -36,7 +36,20 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.18.0 - Export menu (PDF / Word / PNG)
+## Current State: v6.18.1 - Sandbox permission recovery + diagnostic log
+
+**BUILD:** v6.18.1 Release + kit both succeed; installed; not device-tested. **Safety tag:** `before-permission-recovery-2026-09-12`
+**Detail:** `permission_error_recovery_v6.18.1_seymour.md`
+
+### Sep 12 - v6.18.1 "don't have permission to view it" on open
+
+Michael hit Cocoa 257 reopening a Therapist .md. Evidence: `defaults read com.mikeashe.MikePDFViewer recentPDFBookmarks` showed 5 of 10 recents WITHOUT bookmarks (all opened Sep 12 morning), 5 with. Root cause still unknown because `RecentFilesManager.add` used `try?` and threw the error away. Shipped: (1) `AppLog.swift` (app-only, excluded from kit): append-only log at container `Documents/logs/mikepdfviewer.log`, Reveal button in Settings > General; bookmark save/fail and every open failure are logged with the real error. (2) `handleOpenFailure(url:error:)` in ContentView classifies Cocoa 257 / EACCES / EPERM (or nil-PDF + `!isReadableFile`) as denied and shows the `AccessRequestAlert` modifier ("Grant Access…" opens an NSOpenPanel at the file; the click re-grants, `recentFiles.add` stores the bookmark, and the file reloads via `loadDocument` directly since pdfURL is unchanged). Text loader no longer swallows read errors.
+
+**Next step:** if it recurs, grep the log for "bookmark FAILED" to get the trigger. Suspects: files opened via `open -a` from other Claude sessions, or a file rewritten (new inode) by a Claude session after opening. Consider making bookmark creation synchronous again if the log shows a timing issue.
+
+---
+
+## Previous: v6.18.0 - Export menu (PDF / Word / PNG)
 
 **BUILD:** v6.18.0 Release + `swift build` of the kit both succeed; installed to /Applications; not device-tested.
 **Safety tag:** `before-export-2026-09-12`

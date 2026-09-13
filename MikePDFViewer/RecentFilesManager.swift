@@ -28,11 +28,19 @@ class RecentFilesManager: ObservableObject {
         // Bookmark creation costs 15-45 ms of disk I/O; keep it off the main
         // thread so it doesn't add to document-open latency.
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let bookmark = try? url.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
+            var bookmark: Data?
+            do {
+                bookmark = try url.bookmarkData(
+                    options: .withSecurityScope,
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+                AppLog.write("Recents: bookmark saved for \(url.path)")
+            } catch {
+                // Without a bookmark this file cannot be reopened after a
+                // relaunch (sandbox). The log line says why it failed.
+                AppLog.write("Recents: bookmark FAILED for \(url.path): \(error)")
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let bookmark {

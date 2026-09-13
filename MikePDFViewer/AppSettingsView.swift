@@ -71,6 +71,12 @@ private struct GeneralSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            HStack {
+                Spacer()
+                Button("Reveal Diagnostic Log") {
+                    NSWorkspace.shared.activateFileViewerSelecting([AppLog.fileURL])
+                }
+            }
         }
         .padding(20)
     }

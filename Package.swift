@@ -42,6 +42,7 @@ let package = Package(
                 // App-only window management (multi-window focus reuse).
                 "OpenDocumentRegistry.swift",
                 "DocumentExporter.swift",
+                "AppLog.swift",
                 "PDFCompareService.swift",
                 "PDFCompareView.swift",
                 "PDFKitView.swift",
