@@ -5,6 +5,8 @@ extension Notification.Name {
     static let pdfZoomIn = Notification.Name("pdfZoomIn")
     static let pdfZoomOut = Notification.Name("pdfZoomOut")
     static let pdfZoomFit = Notification.Name("pdfZoomFit")
+    /// userInfo["scale"] is a multiple of the fit-to-window scale.
+    static let pdfSetZoom = Notification.Name("pdfSetZoom")
     static let pdfRotateRight = Notification.Name("pdfRotateRight")
     static let pdfRotateLeft = Notification.Name("pdfRotateLeft")
     static let pdfCopy = Notification.Name("pdfCopy")
@@ -546,6 +548,7 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleZoomIn), name: .pdfZoomIn, object: nil)
             nc.addObserver(self, selector: #selector(handleZoomOut), name: .pdfZoomOut, object: nil)
             nc.addObserver(self, selector: #selector(handleZoomFit), name: .pdfZoomFit, object: nil)
+            nc.addObserver(self, selector: #selector(handleSetZoom), name: .pdfSetZoom, object: nil)
             nc.addObserver(self, selector: #selector(handleRotateRight), name: .pdfRotateRight, object: nil)
             nc.addObserver(self, selector: #selector(handleRotateLeft), name: .pdfRotateLeft, object: nil)
             nc.addObserver(self, selector: #selector(handleCopy), name: .pdfCopy, object: nil)
@@ -592,6 +595,15 @@ struct PDFKitView: NSViewRepresentable {
         @objc func handleZoomFit(_ notification: Notification) {
             guard isKeyWindowTarget else { return }
             pdfView?.autoScales = true
+        }
+
+        /// Driven by the zoom slider. The value is relative to the fit scale,
+        /// so 1.0 is the size the document opened at.
+        @objc func handleSetZoom(_ notification: Notification) {
+            guard isKeyWindowTarget, let pdfView,
+                  let scale = notification.userInfo?["scale"] as? Double else { return }
+            pdfView.autoScales = false
+            pdfView.scaleFactor = pdfView.scaleFactorForSizeToFit * CGFloat(scale)
         }
 
         @objc func handleRotateRight(_ notification: Notification) {

@@ -127,6 +127,7 @@ struct ContentView: View {
     @State private var isViewingImage: Bool = false
     @State private var originalImageURL: URL?
     @StateObject private var imageViewer = ImageViewerController()
+    @State private var zoomLevel: Double = 1.0
     @State private var loadStartedAt: Date?
     @State private var loadKind: String = ""
     @State private var didInitialLoad = false
@@ -380,6 +381,9 @@ struct ContentView: View {
                 guard isKeyScene else { return }
                 handlePrint()
             }
+            .modifier(ZoomCommandsListener(
+                onZoomIn: { guard isKeyScene else { return }; nudgeZoom(0.1) },
+                onZoomOut: { guard isKeyScene else { return }; nudgeZoom(-0.1) }))
             .onReceive(NotificationCenter.default.publisher(for: .pdfExport)) { notification in
                 guard isKeyScene else { return }
                 if let raw = notification.userInfo?["format"] as? String,
@@ -543,6 +547,7 @@ struct ContentView: View {
             sidebarContent
         } detail: {
             detailContent
+                .overlay(alignment: .bottomTrailing) { zoomOverlay }
         }
         .navigationSplitViewColumnWidth(min: 120, ideal: 160, max: 250)
         .navigationTitle(pdfURL?.lastPathComponent ?? "MikePDFViewer")
@@ -781,7 +786,7 @@ struct ContentView: View {
         } else if isViewingImage {
             ImageViewerView(controller: imageViewer)
         } else if isViewingCSV, let table = csvDocument {
-            CSVTableView(document: table)
+            CSVTableView(document: table, fontScale: zoomLevel)
         } else if isViewingSVG {
             HTMLBrowserView(controller: htmlBrowser)
         } else if isViewingHTML {
@@ -1716,6 +1721,7 @@ struct ContentView: View {
         // Drop the previous document immediately so title/content cannot show
         // a mix of old pages and a new filename while the new file loads.
         clearAllViewerState()
+        zoomLevel = 1.0
         loadStartedAt = Date()
         loadKind = url.pathExtension.lowercased()
         isLoadingDocument = true
@@ -1941,9 +1947,16 @@ struct ContentView: View {
     private func rebuildTextAttributed() {
         guard isViewingText else { return }
         textFileAttributed = NSAttributedString(string: textFileContent, attributes: [
-            .font: textFileFont,
+            .font: textViewFont,
             .foregroundColor: NSColor.textColor
         ])
+    }
+
+    /// On-screen font, scaled by the zoom slider. Printing and export keep
+    /// the unscaled `textFileFont`, so zooming never changes paper output.
+    private var textViewFont: NSFont {
+        let scaled = max(6, textFileFont.pointSize * zoomLevel)
+        return NSFont(descriptor: textFileFont.fontDescriptor, size: scaled) ?? textFileFont
     }
 
     private var textFileFont: NSFont {
@@ -2010,6 +2023,53 @@ struct ContentView: View {
         } else {
             pdfURL = chosen
         }
+    }
+
+    // MARK: - Zoom
+
+    /// Quick Look (PowerPoint, Keynote) and the Quick markdown view have no
+    /// zoom of their own, so the control stays hidden there.
+    private var canZoom: Bool {
+        if pdfDocument != nil { return true }
+        if isViewingMarkdown { return markdownMode == .reader }
+        return isViewingText || isViewingHTML || isViewingSVG || isViewingImage || isViewingCSV
+    }
+
+    @ViewBuilder
+    private var zoomOverlay: some View {
+        if canZoom {
+            ZoomControl(zoom: $zoomLevel) { value in applyZoom(value) }
+                .padding(.trailing, 16)
+                .padding(.bottom, 14)
+        }
+    }
+
+    /// Sends the slider value to whichever viewer is showing. Every mode
+    /// treats 1.0 as the size the document opened at.
+    private func applyZoom(_ value: Double) {
+        if pdfDocument != nil {
+            NotificationCenter.default.post(name: .pdfSetZoom, object: nil,
+                                            userInfo: ["scale": value])
+        } else if isViewingImage {
+            imageViewer.setRelativeZoom(value)
+        } else if isViewingSVG {
+            htmlBrowser.svgSetScale(value)
+        } else if isViewingHTML {
+            htmlBrowser.setPageZoom(value)
+        } else if isViewingMarkdown {
+            mdSearch.webView?.pageZoom = CGFloat(value)
+        } else if isViewingText {
+            rebuildTextAttributed()
+        }
+        // CSV re-renders from the fontScale passed into CSVTableView.
+    }
+
+    /// Cmd+ and Cmd- reach the PDF view directly; every other mode is nudged
+    /// through the same slider so the two stay in step.
+    private func nudgeZoom(_ delta: Double) {
+        guard canZoom, pdfDocument == nil else { return }
+        zoomLevel = min(max(zoomLevel + delta, 0.25), 4.0)
+        applyZoom(zoomLevel)
     }
 
     // MARK: - Export
@@ -2587,6 +2647,21 @@ class KeyCatcherView: NSView {
         } else {
             super.keyDown(with: event)
         }
+    }
+}
+
+// MARK: - Zoom commands
+
+/// Cmd+ and Cmd- for the non-PDF viewers. Kept out of the main view's chain,
+/// which is already at the Swift type-checker's limit.
+private struct ZoomCommandsListener: ViewModifier {
+    let onZoomIn: () -> Void
+    let onZoomOut: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .pdfZoomIn)) { _ in onZoomIn() }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfZoomOut)) { _ in onZoomOut() }
     }
 }
 

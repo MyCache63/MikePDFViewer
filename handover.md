@@ -36,7 +36,24 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.21.0 - Responsiveness work + built-in performance logging
+## Current State: v6.22.0 - Zoom slider in the bottom right
+
+**BUILD:** v6.22.0 Release + kit both succeed; installed. **Safety tag:** `before-zoom-slider-2026-09-18`
+**Detail:** `zoom_slider_v6.22.0_seymour.md`
+
+### Sep 18 - v6.22.0 Zoom slider
+
+`ZoomControlView.swift`: floating capsule (minus, slider, plus, percent, reset) overlaid on the detail pane at bottom trailing. It calls back through `onZoomChanged` from its own `.onChange`, deliberately, so the main view's modifier chain does not grow.
+
+**1.0 always means "the size it opened at"**, which avoids any need to sync the slider with a viewer's own fit scale. Per mode: PDF posts `.pdfSetZoom` (new), whose handler sets `autoScales = false` and `scaleFactor = scaleFactorForSizeToFit * scale`; images use `ImageViewerController.setRelativeZoom` against an `openScale` captured in `fitOnOpen`; SVG calls new JS `window.__svgSetScale(v)` which multiplies the stored `fitScale`; HTML and markdown reader use `WKWebView.pageZoom`; text scales a new `textViewFont` (print and export keep the unscaled `textFileFont` on purpose); CSV passes `fontScale` into `CSVTableView`, which now includes the scale in its coordinator signature and scales font, row height and column widths.
+
+Hidden for QuickLook and for markdown Quick view. `.pdfZoomIn`/`.pdfZoomOut` route through `nudgeZoom` for non-PDF modes via a new `ZoomCommandsListener` modifier (two inline `onReceive` calls broke the type-checker again; that chain has no headroom left).
+
+Verified headlessly: SVG at fit is 856 px wide, exactly 1712 at 200%, and back to 856 after Fit.
+
+---
+
+## Previous: v6.21.0 - Responsiveness work + built-in performance logging
 
 **BUILD:** v6.21.0 Release + kit both succeed; installed. **Safety tag:** `before-responsiveness-2026-09-18`
 **Docs:** `Responsiveness_Review_v01_2026-09-18.md` (analysis), `Responsiveness_Review_v02_2026-09-18.md` (what shipped + correction)

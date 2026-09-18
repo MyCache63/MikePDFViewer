@@ -91,6 +91,7 @@ enum SVGPage {
           var holder = document.getElementById('holder');
           var svg = holder.querySelector('svg');
           var scale = 1;
+          var fitScale = 1;
           var size = { w: 0, h: 0 };
           function measure() {
             if (!svg) { return; }
@@ -108,9 +109,14 @@ enum SVGPage {
             if (size.w <= 0) { return; }
             var room = Math.min((window.innerWidth - 44) / size.w,
                                 (window.innerHeight - 44) / size.h);
-            scale = Math.max(0.05, Math.min(room, 40));
+            fitScale = Math.max(0.05, Math.min(room, 40));
+            scale = fitScale;
             apply();
           }
+          window.__svgSetScale = function (value) {
+            scale = Math.max(0.02, Math.min(fitScale * value, 40));
+            apply();
+          };
           window.__svgZoom = function (action) {
             if (action === 'fit') { fit(); return; }
             if (action === 'actual') { scale = 1; }
@@ -152,6 +158,17 @@ extension HTMLBrowserController {
         webView.loadHTMLString(SVGPage.html(svgSource: source),
                                baseURL: fileURL.deletingLastPathComponent())
         return true
+    }
+
+    /// Slider zoom, as a multiple of the fit-to-window scale.
+    func svgSetScale(_ value: Double) {
+        webView.evaluateJavaScript(String(format: "window.__svgSetScale && window.__svgSetScale(%.4f)", value),
+                                   completionHandler: nil)
+    }
+
+    /// Page zoom for ordinary HTML pages.
+    func setPageZoom(_ value: Double) {
+        webView.pageZoom = CGFloat(value)
     }
 
     func svgZoom(_ action: String) {

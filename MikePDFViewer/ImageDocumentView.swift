@@ -21,6 +21,9 @@ final class ImageViewerController: ObservableObject {
     @Published private(set) var pixelSize: CGSize = .zero
     @Published private(set) var fileSizeText: String = ""
 
+    /// Magnification the image opened at, which the slider treats as 100%.
+    private var openScale: CGFloat = 1
+
     weak var scrollView: NSScrollView?
     weak var imageView: NSImageView?
 
@@ -64,7 +67,15 @@ final class ImageViewerController: ObservableObject {
 
     /// Used on first display: shrinks a big screenshot to fit, but leaves a
     /// small image at its own size instead of blowing it up.
-    func fitOnOpen() { setMagnification(min(fitScale(allowEnlarging: false), 1), centerOnImage: true) }
+    func fitOnOpen() {
+        openScale = min(fitScale(allowEnlarging: false), 1)
+        setMagnification(openScale, centerOnImage: true)
+    }
+
+    /// 1.0 restores the size the image opened at.
+    func setRelativeZoom(_ value: Double) {
+        setMagnification(openScale * CGFloat(value), centerOnImage: false)
+    }
 
     private var magnification: CGFloat { scrollView?.magnification ?? 1 }
 

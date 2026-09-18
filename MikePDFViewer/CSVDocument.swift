@@ -119,8 +119,9 @@ struct CSVDocument: Sendable {
 /// screen, so a file with tens of thousands of rows still opens instantly.
 struct CSVTableView: NSViewRepresentable {
     let document: CSVDocument
+    var fontScale: Double = 1.0
 
-    func makeCoordinator() -> Coordinator { Coordinator(document: document) }
+    func makeCoordinator() -> Coordinator { Coordinator(document: document, fontScale: fontScale) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let table = NSTableView()
@@ -141,32 +142,40 @@ struct CSVTableView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let table = scrollView.documentView as? NSTableView else { return }
-        if context.coordinator.signature != Coordinator.signature(for: document) {
+        let wanted = Coordinator.signature(for: document, fontScale: fontScale)
+        if context.coordinator.signature != wanted {
             context.coordinator.document = document
+            context.coordinator.fontScale = fontScale
             context.coordinator.rebuildColumns(in: table)
         }
     }
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var document: CSVDocument
+        var fontScale: Double
         private(set) var signature: String
 
-        init(document: CSVDocument) {
+        init(document: CSVDocument, fontScale: Double) {
             self.document = document
-            self.signature = Coordinator.signature(for: document)
+            self.fontScale = fontScale
+            self.signature = Coordinator.signature(for: document, fontScale: fontScale)
         }
 
-        static func signature(for document: CSVDocument) -> String {
-            "\(document.columns.joined(separator: "\u{1}"))|\(document.rowCount)"
+        static func signature(for document: CSVDocument, fontScale: Double) -> String {
+            "\(document.columns.joined(separator: "\u{1}"))|\(document.rowCount)|\(Int(fontScale * 100))"
         }
+
+        private var cellFontSize: CGFloat { max(7, 12 * CGFloat(fontScale)) }
 
         func rebuildColumns(in table: NSTableView) {
-            signature = Coordinator.signature(for: document)
+            signature = Coordinator.signature(for: document, fontScale: fontScale)
+            table.rowSizeStyle = .custom
+            table.rowHeight = max(14, 17 * CGFloat(fontScale))
             for column in table.tableColumns { table.removeTableColumn(column) }
 
             let numbers = NSTableColumn(identifier: .init("rowNumber"))
             numbers.title = "#"
-            numbers.width = 48
+            numbers.width = 48 * max(0.6, CGFloat(fontScale))
             numbers.minWidth = 36
             table.addTableColumn(numbers)
 
@@ -183,14 +192,14 @@ struct CSVTableView: NSViewRepresentable {
         /// Sample the first rows so columns open at a sensible width instead of
         /// every column being identical.
         private func estimatedWidth(forColumn index: Int, title: String) -> CGFloat {
-            let font = NSFont.systemFont(ofSize: 12)
-            var widest = (title as NSString).size(withAttributes: [.font: NSFont.boldSystemFont(ofSize: 12)]).width
+            let font = NSFont.systemFont(ofSize: cellFontSize)
+            var widest = (title as NSString).size(withAttributes: [.font: NSFont.boldSystemFont(ofSize: cellFontSize)]).width
             for row in document.rows.prefix(100) {
                 guard index < row.count else { continue }
                 let width = (row[index] as NSString).size(withAttributes: [.font: font]).width
                 widest = max(widest, width)
             }
-            return min(max(widest + 24, 60), 380)
+            return min(max(widest + 24, 60), 380 * max(1, CGFloat(fontScale)))
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int { document.rowCount }
@@ -207,9 +216,10 @@ struct CSVTableView: NSViewRepresentable {
                 field = NSTextField(labelWithString: "")
                 field.identifier = identifier
                 field.lineBreakMode = .byTruncatingTail
-                field.font = .systemFont(ofSize: 12)
+                field.font = .systemFont(ofSize: cellFontSize)
             }
 
+            field.font = .systemFont(ofSize: cellFontSize)
             if identifier.rawValue == "rowNumber" {
                 field.stringValue = "\(row + 1)"
                 field.textColor = .tertiaryLabelColor
