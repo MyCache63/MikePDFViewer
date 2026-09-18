@@ -36,7 +36,28 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.19.0 - SVG viewer (default handler)
+## Current State: v6.20.0 - Image and CSV viewers
+
+**BUILD:** v6.20.0 Release + kit both succeed; installed; 13 of 14 headless checks pass (the 14th found a real AppKit limit, handled). **Safety tag:** `before-images-csv-2026-09-18`
+**Detail:** `images_and_csv_v6.20.0_seymour.md`
+
+### Sep 18 - v6.20.0 Images and CSV (Michael approved items 1 and 2 of the filetype plan)
+
+`ImageDocumentView.swift`: `ImageViewerController` (loads via `Data(contentsOf:)` first so a sandbox denial throws a real Cocoa 257 and reaches the Grant Access flow, then `NSImage(data:)`; pixel size from the bitmap rep, not `NSImage.size`) plus `ImageViewerView` (NSScrollView with `allowsMagnification`, `CenteringClipView` so small images centre, `imageScaling = .scaleNone` so magnification alone does the scaling, `animates = true` for GIFs). Fit on open never enlarges; the Fit button does. Types: png jpg jpeg gif heic heif tiff tif bmp webp.
+
+`CSVDocument.swift`: RFC 4180 style parser (quoted fields, embedded delimiters and newlines, doubled-quote escape, ragged rows padded), delimiter sniffing (tab for .tsv, comma vs semicolon from line 1), plus `CSVTableView` (NSTableView, virtualized, row-number column, widths sampled from the first 100 rows). Parsing runs on a detached task. Toolbar toggle `csv-first-row-is-header` re-parses.
+
+Print and export for both go through `printViaExportablePDF()` / new `exportablePDF()` branches: images use `PDFPage(image:)`; CSV builds an HTML table (`DocumentExporter.html(forTable:rows:title:)`, `thead` repeats per printed page) through `PaginatedHTMLToPDF`.
+
+**Finding, verified twice:** AppKit's `officeOpenXML` writer does NOT embed images. Neither `NSTextAttachment.image` nor `NSTextAttachment(fileWrapper:)` puts anything in `word/media/`. Export as Word is therefore blocked for images with an explanatory alert instead of writing an empty document. If picture-in-Word ever matters, it needs hand-built OOXML or a different writer.
+
+Both file types are registered in Info.plist at rank **Alternate**: Preview keeps images, Excel keeps CSV, per the recommendation Michael accepted. Flipping either is a one-line change in `scripts/set_default_apps.swift`.
+
+**Still open from the filetype review:** the cheap group (yaml/xml/plist/conf through the text viewer, and xlsx/pages/numbers through QuickLook). Not started, needs his go-ahead.
+
+---
+
+## Previous: v6.19.0 - SVG viewer (default handler)
 
 **BUILD:** v6.19.0 Release + kit both succeed; installed; SVG export path verified headlessly. **Safety tag:** `before-svg-viewer-2026-09-18`
 **Detail:** `filetype_coverage_v6.19.0_seymour.md` (includes the full missing-filetype analysis and recommendations)

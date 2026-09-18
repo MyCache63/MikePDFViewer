@@ -373,6 +373,8 @@ struct MikePDFViewerApp: App {
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         types.append(.html)
         types.append(.svg)
+        types.append(contentsOf: [.png, .jpeg, .gif, .heic, .tiff, .bmp, .webP, .image])
+        types.append(contentsOf: [.commaSeparatedText, .tabSeparatedText])
         types.append(.json)
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false

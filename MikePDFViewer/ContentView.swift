@@ -124,6 +124,13 @@ struct ContentView: View {
     @State private var originalHTMLURL: URL?
     @State private var isViewingSVG: Bool = false
     @State private var originalSVGURL: URL?
+    @State private var isViewingImage: Bool = false
+    @State private var originalImageURL: URL?
+    @StateObject private var imageViewer = ImageViewerController()
+    @State private var isViewingCSV: Bool = false
+    @State private var originalCSVURL: URL?
+    @State private var csvDocument: CSVDocument?
+    @AppStorage("csv-first-row-is-header") private var csvFirstRowIsHeader: Bool = true
     @StateObject private var htmlBrowser = HTMLBrowserController()
 
 
@@ -588,6 +595,48 @@ struct ContentView: View {
                 }
                 .frame(maxHeight: .infinity)
             }
+        } else if isViewingImage {
+            VStack(spacing: 4) {
+                Image(systemName: "photo")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text(imageViewer.dimensionsText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(imageViewer.fileSizeText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                if let url = originalImageURL {
+                    Text(url.lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
+            }
+            .frame(maxHeight: .infinity)
+        } else if isViewingCSV {
+            VStack(spacing: 4) {
+                Image(systemName: "tablecells")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                if let table = csvDocument {
+                    Text(table.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(table.delimiterName) separated")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                if let url = originalCSVURL {
+                    Text(url.lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
+            }
+            .frame(maxHeight: .infinity)
         } else if isViewingHTML {
             VStack {
                 Image(systemName: "globe")
@@ -712,6 +761,10 @@ struct ContentView: View {
             }
         } else if isViewingQuickLook, let qlURL = quickLookURL {
             QuickLookFileView(url: qlURL)
+        } else if isViewingImage {
+            ImageViewerView(controller: imageViewer)
+        } else if isViewingCSV, let table = csvDocument {
+            CSVTableView(document: table)
         } else if isViewingSVG {
             HTMLBrowserView(controller: htmlBrowser)
         } else if isViewingHTML {
@@ -823,6 +876,37 @@ struct ContentView: View {
 
         if isViewingText {
             textFontMenu
+        }
+
+        if isViewingImage {
+            Button { imageViewer.zoomOut() } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .tooltip("Zoom Out")
+
+            Button { imageViewer.zoomIn() } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .tooltip("Zoom In")
+
+            Button { imageViewer.fitToWindow() } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .tooltip("Fit to Window")
+
+            Button { imageViewer.actualSize() } label: {
+                Image(systemName: "1.magnifyingglass")
+            }
+            .tooltip("Actual Size")
+        }
+
+        if isViewingCSV {
+            Toggle(isOn: $csvFirstRowIsHeader) {
+                Image(systemName: "tablecells.badge.ellipsis")
+            }
+            .toggleStyle(.button)
+            .tooltip("Use the first row as column headings")
+            .onChange(of: csvFirstRowIsHeader) { _, _ in reparseCSV() }
         }
 
         if isViewingSVG {
@@ -1508,6 +1592,8 @@ struct ContentView: View {
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         types.append(.html)
         types.append(.svg)
+        types.append(contentsOf: [.png, .jpeg, .gif, .heic, .tiff, .bmp, .webP, .image])
+        types.append(contentsOf: [.commaSeparatedText, .tabSeparatedText])
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -1632,6 +1718,10 @@ struct ContentView: View {
             loadHTMLDocument(from: url, generation: generation)
         case "svg":
             loadSVGDocument(from: url, generation: generation)
+        case "png", "jpg", "jpeg", "gif", "heic", "heif", "tiff", "tif", "bmp", "webp":
+            loadImageDocument(from: url, generation: generation)
+        case "csv", "tsv":
+            loadCSVDocument(from: url, generation: generation)
         default:
             loadPDFDocument(from: url, generation: generation)
         }
@@ -1676,6 +1766,12 @@ struct ContentView: View {
         originalHTMLURL = nil
         isViewingSVG = false
         originalSVGURL = nil
+        isViewingImage = false
+        originalImageURL = nil
+        imageViewer.clear()
+        isViewingCSV = false
+        originalCSVURL = nil
+        csvDocument = nil
     }
 
     /// Returns false (and skips applying results) when a newer open superseded
@@ -1691,6 +1787,54 @@ struct ContentView: View {
         originalHTMLURL = url
         htmlBrowser.load(fileURL: url)
         isLoadingDocument = false
+    }
+
+    private func loadImageDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+        do {
+            try imageViewer.load(url: url)
+            isViewingImage = true
+            originalImageURL = url
+            isLoadingDocument = false
+        } catch {
+            handleOpenFailure(url: url, error: error)
+        }
+    }
+
+    /// Parsing happens off the main thread: a big export can run to megabytes.
+    private func loadCSVDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+        let treatFirstRowAsHeader = csvFirstRowIsHeader
+        Task.detached(priority: .userInitiated) {
+            do {
+                let data = try Data(contentsOf: url)
+                let text = String(data: data, encoding: .utf8)
+                    ?? String(data: data, encoding: .isoLatin1) ?? ""
+                let delimiter = CSVDocument.detectDelimiter(text: text,
+                                                            fileExtension: url.pathExtension)
+                let parsed = CSVDocument.parse(text: text, delimiter: delimiter,
+                                               firstRowIsHeader: treatFirstRowAsHeader)
+                await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                    csvDocument = parsed
+                    isViewingCSV = true
+                    originalCSVURL = url
+                    isLoadingDocument = false
+                }
+            } catch {
+                await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                    handleOpenFailure(url: url, error: error)
+                }
+            }
+        }
+    }
+
+    /// Re-reads the file when the header toggle changes.
+    private func reparseCSV() {
+        guard isViewingCSV, let url = originalCSVURL else { return }
+        loadGeneration &+= 1
+        loadCSVDocument(from: url, generation: loadGeneration)
     }
 
     /// SVG is vector XML, so WebKit draws it and it stays sharp at any zoom.
@@ -1809,7 +1953,8 @@ struct ContentView: View {
     // MARK: - Export
 
     private var canExport: Bool {
-        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingQuickLook || isViewingSVG
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingQuickLook
+            || isViewingSVG || isViewingImage || isViewingCSV
     }
 
     private var exportStem: String {
@@ -1822,6 +1967,12 @@ struct ContentView: View {
         guard canExport else { return }
         if isViewingQuickLook, originalDOCXURL == nil {
             errorAlertMessage = "Export isn't available for PowerPoint or Keynote files yet. Open the file in its own app to export it."
+            return
+        }
+        // Verified twice against AppKit's Office Open XML writer: it drops
+        // image attachments, so a Word export here would be an empty page.
+        if format == .docx, isViewingImage {
+            errorAlertMessage = "Word export can't carry a picture. Export as PDF or PNG instead, or paste the image into Word."
             return
         }
         switch format {
@@ -1860,6 +2011,23 @@ struct ContentView: View {
                 throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
             }
             return doc
+        }
+        if isViewingImage, let picture = imageViewer.image {
+            guard let page = PDFPage(image: picture) else {
+                throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
+            }
+            let document = PDFDocument()
+            document.insert(page, at: 0)
+            return document
+        }
+        if isViewingCSV, let table = csvDocument {
+            let html = DocumentExporter.html(forTable: table.columns, rows: table.rows,
+                                             title: exportStem)
+            let data = try await PaginatedHTMLToPDF.render(html: html, marginInches: 0.4)
+            guard let document = PDFDocument(data: data), document.pageCount > 0 else {
+                throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
+            }
+            return document
         }
         if isViewingSVG, let svgURL = originalSVGURL {
             let source = (try? String(contentsOf: svgURL, encoding: .utf8)) ?? ""
@@ -1901,6 +2069,14 @@ struct ContentView: View {
             let attributed: NSAttributedString
             if isViewingMarkdown, let md = markdownDocument {
                 attributed = md.styledAttributedStringWithAnchors().0
+            } else if isViewingCSV, let table = csvDocument {
+                // Tab separated so Word lays the columns out on paste.
+                let lines = ([table.columns] + table.rows)
+                    .map { $0.joined(separator: "\t") }
+                    .joined(separator: "\n")
+                attributed = NSAttributedString(string: lines, attributes: [
+                    .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+                ])
             } else if isViewingText {
                 attributed = textFileAttributed
             } else if let pdf = pdfDocument {
@@ -1926,13 +2102,16 @@ struct ContentView: View {
             printTextDocument()
         } else if isViewingHTML || isViewingSVG {
             printHTMLDocument()
+        } else if isViewingImage || isViewingCSV {
+            printViaExportablePDF()
         } else if isViewingQuickLook {
             errorAlertMessage = "Printing isn't available in the quick viewer. Use Convert to PDF first, then print."
         }
     }
 
     private var canPrint: Bool {
-        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML || isViewingSVG
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML
+            || isViewingSVG || isViewingImage || isViewingCSV
     }
 
     /// Show the pre-print layout sheet (font size, margins, fit-to-pages,
@@ -1941,6 +2120,18 @@ struct ContentView: View {
     private func printMarkdownDocument() {
         guard markdownDocument != nil, originalMarkdownURL != nil else { return }
         showMarkdownPrintSheet = true
+    }
+
+    /// Modes with no printable view of their own (image, CSV) print the same
+    /// PDF the export path builds.
+    private func printViaExportablePDF() {
+        Task {
+            do {
+                runPrintOperation(for: try await exportablePDF())
+            } catch {
+                errorAlertMessage = "Could not prepare \(exportStem) for printing: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func runPrintOperation(for document: PDFDocument) {

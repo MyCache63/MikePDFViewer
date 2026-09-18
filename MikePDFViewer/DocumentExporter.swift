@@ -63,6 +63,37 @@ enum DocumentExporter {
         return result
     }
 
+    /// A delimited file as an HTML table, for print and PDF export. Repeating
+    /// the header on every printed page is what makes a long table readable.
+    static func html(forTable columns: [String], rows: [[String]], title: String) -> String {
+        func escape(_ text: String) -> String {
+            var out = text
+            for (from, to) in [("&", "&amp;"), ("<", "&lt;"), (">", "&gt;")] {
+                out = out.replacingOccurrences(of: from, with: to)
+            }
+            return out
+        }
+        let head = columns.map { "<th>\(escape($0))</th>" }.joined()
+        let body = rows.map { row in
+            "<tr>" + row.map { "<td>\(escape($0))</td>" }.joined() + "</tr>"
+        }.joined()
+        return """
+        <html><head><meta charset="utf-8"><style>
+        body { font-family: -apple-system, Helvetica, sans-serif; font-size: 9pt; margin: 0; }
+        h1 { font-size: 12pt; margin: 0 0 8pt 0; }
+        table { border-collapse: collapse; width: 100%; }
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
+        th, td { border: 0.5pt solid #999; padding: 3pt 5pt; text-align: left;
+                 vertical-align: top; word-break: break-word; }
+        th { background: #eee; font-weight: 600; }
+        </style></head><body>
+        <h1>\(escape(title))</h1>
+        <table><thead><tr>\(head)</tr></thead><tbody>\(body)</tbody></table>
+        </body></html>
+        """
+    }
+
     /// Plain text (txt/log/json) wrapped as preformatted HTML so it can go
     /// through the paginated renderer and become a real multi-page PDF.
     static func html(forPlainText text: String, font: NSFont) -> String {
