@@ -44,9 +44,17 @@ extension FocusedValues {
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Spawning the first WebContent process costs over a second; do it
-        // now, hidden, so the first markdown/HTML open feels instant.
-        WebKitWarmup.prewarm()
+        PerfLog.shared.markLaunchFinished()
+        // Spawning the first WebContent process costs over a second, so it is
+        // still worth doing early, but building the WKWebView costs about
+        // 115 ms on the main thread. Waiting until the window is up keeps the
+        // benefit and takes that time off the launch.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            let started = Date()
+            WebKitWarmup.prewarm()
+            PerfLog.shared.record("webkit prewarm", since: started)
+        }
     }
 
     /// Kept current by ContentView whenever its dirty flag changes.

@@ -36,7 +36,29 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.20.0 - Image and CSV viewers
+## Current State: v6.21.0 - Responsiveness work + built-in performance logging
+
+**BUILD:** v6.21.0 Release + kit both succeed; installed. **Safety tag:** `before-responsiveness-2026-09-18`
+**Docs:** `Responsiveness_Review_v01_2026-09-18.md` (analysis), `Responsiveness_Review_v02_2026-09-18.md` (what shipped + correction)
+
+### Sep 18 - v6.21.0 Launch, text viewer, and PerfLog
+
+**Important correction:** v01 of the review reported ~1.3 s launch. That was a measurement artifact. The polling script (osascript + System Events window count) overstates by ~600 ms. The app's own instrumentation, from the kernel process start time, says **642-819 ms to first window**. There is no large unexplained gap left.
+
+- `PerfLog.swift` (app-only, excluded from kit): `@MainActor ObservableObject`, in-memory ring buffer of 200 events plus a line in the AppLog file for each. `PerfLog.processStart` reads the real process start via `sysctl(KERN_PROC_PID)`. Marks: `launch: app ready`, `launch: first window` (first window only), `webkit prewarm`, and `open .<ext>`.
+- Open timing is centralised: `loadDocument` records the start, and all 16 `isLoadingDocument = false` sites were routed through a new `finishLoad()` that records the elapsed time. Note the global replace also hit the `@State` declaration on line 44 and had to be repaired; check that line if timings ever stop appearing.
+- Settings gained a **Speed** tab listing recent timings (over 400 ms in orange) with Copy and Reveal Log.
+- WebKit prewarm deferred 0.6 s past launch (`Task { @MainActor in ... }`, not `DispatchQueue.asyncAfter`, which cannot call the @MainActor prewarm). Now costs 25-30 ms and runs after the window.
+- Reopening the last file deferred one run-loop turn, guarded by `didInitialLoad` so a Finder open does not cause a double load.
+- Text viewer: line count and attributed string are now computed once at load and on font change, not inside the view body (147 ms + 18 ms per update on a 10 MB file). Reading moved to a detached task via `nonisolated static readTextFile(at:)`, which returns a Sendable tuple. Two inline `.onChange` modifiers blew the type-checker budget, so they live in `TextFontChangeListener`.
+
+**Measured and ruled out (v01):** framework linking (4-6 ms, shared cache), form-field scan (9.8 ms over 300 pages), bookmark resolution (1.9 ms), temp purge (0.8 ms over 200 files).
+
+**Left:** first-page render of very large PDFs (615 ms on the 58 MB AMD file); one Swift 6 sendability warning in the markdown path.
+
+---
+
+## Previous: v6.20.0 - Image and CSV viewers
 
 **BUILD:** v6.20.0 Release + kit both succeed; installed; 13 of 14 headless checks pass (the 14th found a real AppKit limit, handled). **Safety tag:** `before-images-csv-2026-09-18`
 **Detail:** `images_and_csv_v6.20.0_seymour.md`

@@ -43,6 +43,7 @@ let package = Package(
                 "OpenDocumentRegistry.swift",
                 "DocumentExporter.swift",
                 "AppLog.swift",
+                "PerfLog.swift",
                 "PDFCompareService.swift",
                 "PDFCompareView.swift",
                 "PDFKitView.swift",

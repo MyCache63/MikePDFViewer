@@ -9,6 +9,8 @@ struct AppSettingsView: View {
                 .tabItem { Label("Presentation", systemImage: "play.rectangle") }
             GeneralSettingsTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
+            PerformanceSettingsTab()
+                .tabItem { Label("Speed", systemImage: "speedometer") }
         }
         .frame(width: 420)
         .padding(.vertical, 8)
@@ -41,6 +43,65 @@ private struct PresentationSettingsTab: View {
                     fillHex = PresentationAppearance.defaultFillHex
                 }
             }
+        }
+        .padding(20)
+    }
+}
+
+/// Launch and document-open timings, so a slow-down can be seen and compared
+/// between versions instead of guessed at.
+private struct PerformanceSettingsTab: View {
+    @ObservedObject private var perf = PerfLog.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recent timings")
+                .font(.headline)
+
+            if perf.events.isEmpty {
+                Text("Nothing recorded yet. Open a document and come back.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 200, alignment: .center)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(perf.events.prefix(50)) { event in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(event.millisecondsText)
+                                    .monospacedDigit()
+                                    .frame(width: 66, alignment: .trailing)
+                                    .foregroundStyle(event.milliseconds > 400 ? Color.orange : Color.secondary)
+                                Text(event.name)
+                                Text(event.detail)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 0)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                    .padding(.trailing, 6)
+                }
+                .frame(height: 200)
+            }
+
+            HStack {
+                Button("Copy Timings") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(perf.summaryText(), forType: .string)
+                }
+                Button("Reveal Log") {
+                    NSWorkspace.shared.activateFileViewerSelecting([AppLog.fileURL])
+                }
+                Spacer()
+            }
+
+            Text("Every launch and every document open is timed and written to the log, so speed can be compared from one version to the next.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(20)
     }
