@@ -372,6 +372,7 @@ struct MikePDFViewerApp: App {
         if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         types.append(.html)
+        types.append(.svg)
         types.append(.json)
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false

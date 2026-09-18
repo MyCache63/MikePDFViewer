@@ -3,7 +3,7 @@
 import Foundation
 import CoreServices
 
-for uti in ["public.plain-text", "public.json"] {
+for uti in ["public.plain-text", "public.json", "public.svg-image"] {
     if let handler = LSCopyDefaultRoleHandlerForContentType(uti as CFString, .all)?.takeRetainedValue() {
         print("\(uti) -> \(handler)")
     } else {

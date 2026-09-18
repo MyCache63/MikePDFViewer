@@ -106,6 +106,18 @@
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
+			<string>SVG Image</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.svg-image</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
 			<string>HTML Document</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>

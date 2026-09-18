@@ -36,7 +36,22 @@ settings, annotation, OCR, redaction or signatures is app-only and belongs in th
 `swift build --package-path ~/Projects/MikePDFViewer` once; it catches this in
 seconds and saves MC3 from a broken build.
 
-## Current State: v6.18.1 - Sandbox permission recovery + diagnostic log
+## Current State: v6.19.0 - SVG viewer (default handler)
+
+**BUILD:** v6.19.0 Release + kit both succeed; installed; SVG export path verified headlessly. **Safety tag:** `before-svg-viewer-2026-09-18`
+**Detail:** `filetype_coverage_v6.19.0_seymour.md` (includes the full missing-filetype analysis and recommendations)
+
+### Sep 18 - v6.19.0 SVG
+
+There was no SVG support at all; .svg fell through to the PDF loader and failed. Added `SVGPage` + `HTMLBrowserController.loadSVG/svgZoom` in HTMLBrowserView.swift (kit-safe, no app-only deps). `SVGPage.html` is the interactive page (neutral background, JS `window.__svgZoom` for out/in/fit/actual driven by four toolbar buttons); `SVGPage.staticHTML` is the JS-free version used for export and print, because `PaginatedHTMLToPDF` disables JavaScript. ContentView gained `isViewingSVG` / `originalSVGURL`, a dispatch case, the zoom toolbar, print via the existing `printHTMLDocument`, and an `exportablePDF` branch so PDF and PNG export work. Info.plist declares `public.svg-image` at rank Default; `scripts/set_default_apps.swift` now sets it and was run (verified: public.svg-image -> com.mikeashe.MikePDFViewer).
+
+Verified headlessly: sample SVG through `PaginatedHTMLToPDF` produced a 1-page PDF whose text layer contained the drawing's text.
+
+**Next step (needs Michael's go-ahead):** images (png/jpg/heic/gif/tiff/webp) as the biggest gap, then CSV as a read-only table, then the cheap group (yaml/xml/plist/conf text types, plus xlsx/pages/numbers via QuickLook). Recommended defaults: keep Preview for images, Excel for xlsx; take default only for yaml/xml.
+
+---
+
+## Previous: v6.18.1 - Sandbox permission recovery + diagnostic log
 
 **BUILD:** v6.18.1 Release + kit both succeed; installed; not device-tested. **Safety tag:** `before-permission-recovery-2026-09-12`
 **Detail:** `permission_error_recovery_v6.18.1_seymour.md`

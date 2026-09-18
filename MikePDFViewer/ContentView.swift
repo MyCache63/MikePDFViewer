@@ -122,6 +122,8 @@ struct ContentView: View {
     // HTML mini browser (.html/.htm)
     @State private var isViewingHTML: Bool = false
     @State private var originalHTMLURL: URL?
+    @State private var isViewingSVG: Bool = false
+    @State private var originalSVGURL: URL?
     @StateObject private var htmlBrowser = HTMLBrowserController()
 
 
@@ -710,6 +712,8 @@ struct ContentView: View {
             }
         } else if isViewingQuickLook, let qlURL = quickLookURL {
             QuickLookFileView(url: qlURL)
+        } else if isViewingSVG {
+            HTMLBrowserView(controller: htmlBrowser)
         } else if isViewingHTML {
             HTMLBrowserView(controller: htmlBrowser)
         } else if isViewingEML {
@@ -819,6 +823,28 @@ struct ContentView: View {
 
         if isViewingText {
             textFontMenu
+        }
+
+        if isViewingSVG {
+            Button { htmlBrowser.svgZoom("out") } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .tooltip("Zoom Out")
+
+            Button { htmlBrowser.svgZoom("in") } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .tooltip("Zoom In")
+
+            Button { htmlBrowser.svgZoom("fit") } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .tooltip("Fit to Window")
+
+            Button { htmlBrowser.svgZoom("actual") } label: {
+                Image(systemName: "1.magnifyingglass")
+            }
+            .tooltip("Actual Size")
         }
 
         if isViewingHTML {
@@ -1481,6 +1507,7 @@ struct ContentView: View {
         if let pptType = UTType(filenameExtension: "ppt") { types.append(pptType) }
         if let keyType = UTType(filenameExtension: "key") { types.append(keyType) }
         types.append(.html)
+        types.append(.svg)
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -1603,6 +1630,8 @@ struct ContentView: View {
             loadTextDocument(from: url, generation: generation)
         case "html", "htm":
             loadHTMLDocument(from: url, generation: generation)
+        case "svg":
+            loadSVGDocument(from: url, generation: generation)
         default:
             loadPDFDocument(from: url, generation: generation)
         }
@@ -1645,6 +1674,8 @@ struct ContentView: View {
         quickLookURL = nil
         isViewingHTML = false
         originalHTMLURL = nil
+        isViewingSVG = false
+        originalSVGURL = nil
     }
 
     /// Returns false (and skips applying results) when a newer open superseded
@@ -1659,6 +1690,15 @@ struct ContentView: View {
         isViewingHTML = true
         originalHTMLURL = url
         htmlBrowser.load(fileURL: url)
+        isLoadingDocument = false
+    }
+
+    /// SVG is vector XML, so WebKit draws it and it stays sharp at any zoom.
+    private func loadSVGDocument(from url: URL, generation: UInt64) {
+        guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+        isViewingSVG = true
+        originalSVGURL = url
+        _ = htmlBrowser.loadSVG(fileURL: url)
         isLoadingDocument = false
     }
 
@@ -1769,7 +1809,7 @@ struct ContentView: View {
     // MARK: - Export
 
     private var canExport: Bool {
-        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingQuickLook
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingQuickLook || isViewingSVG
     }
 
     private var exportStem: String {
@@ -1816,6 +1856,15 @@ struct ContentView: View {
         if isViewingText {
             let html = DocumentExporter.html(forPlainText: textFileContent, font: textFileFont)
             let data = try await PaginatedHTMLToPDF.render(html: html, marginInches: 0.5)
+            guard let doc = PDFDocument(data: data), doc.pageCount > 0 else {
+                throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
+            }
+            return doc
+        }
+        if isViewingSVG, let svgURL = originalSVGURL {
+            let source = (try? String(contentsOf: svgURL, encoding: .utf8)) ?? ""
+            let data = try await PaginatedHTMLToPDF.render(
+                html: SVGPage.staticHTML(svgSource: source), marginInches: 0.5)
             guard let doc = PDFDocument(data: data), doc.pageCount > 0 else {
                 throw MarkdownToPDFConverter.ConversionError.pdfRenderFailed
             }
@@ -1875,7 +1924,7 @@ struct ContentView: View {
             printMarkdownDocument()
         } else if isViewingText {
             printTextDocument()
-        } else if isViewingHTML {
+        } else if isViewingHTML || isViewingSVG {
             printHTMLDocument()
         } else if isViewingQuickLook {
             errorAlertMessage = "Printing isn't available in the quick viewer. Use Convert to PDF first, then print."
@@ -1883,7 +1932,7 @@ struct ContentView: View {
     }
 
     private var canPrint: Bool {
-        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML || isViewingSVG
     }
 
     /// Show the pre-print layout sheet (font size, margins, fit-to-pages,
