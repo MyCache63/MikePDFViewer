@@ -96,6 +96,7 @@ struct ThumbnailSidebar: View {
                 selectedPages.removeAll()
                 draggedPage = nil
                 lastPrewarmKey = ""
+                ThumbnailRenderer.clearCache()
                 prewarmThumbnails()
             }
             .focusable()
@@ -281,7 +282,13 @@ struct PageDropDelegate: DropDelegate {
 
 /// Cache of rendered page thumbnails so scrolling doesn't re-render pages
 /// that were already generated at the current size and document version.
-private let thumbnailCache = NSCache<NSString, NSImage>()
+/// Capped so a long PDF session cannot keep every Retina thumbnail forever.
+private let thumbnailCache: NSCache<NSString, NSImage> = {
+    let cache = NSCache<NSString, NSImage>()
+    cache.countLimit = 80
+    cache.totalCostLimit = 40 * 1024 * 1024
+    return cache
+}()
 
 /// Shared render/cache logic used by both ThumbnailItem (on-demand) and
 /// ThumbnailSidebar's pre-warmer, so their cache entries are identical.
@@ -320,7 +327,13 @@ enum ThumbnailRenderer {
         let aspect = pageW > 0 ? pageH / pageW : 11.0 / 8.5
         let size = CGSize(width: pixelWidth, height: pixelWidth * aspect)
         let img = page.thumbnail(of: size, for: .mediaBox)
-        thumbnailCache.setObject(img, forKey: cacheKey(document: document, pageIndex: pageIndex, version: version, pixelWidth: pixelWidth))
+        // Approximate RGBA byte cost so totalCostLimit can evict under pressure.
+        let cost = Int(size.width * size.height * 4)
+        thumbnailCache.setObject(
+            img,
+            forKey: cacheKey(document: document, pageIndex: pageIndex, version: version, pixelWidth: pixelWidth),
+            cost: cost
+        )
         return img
     }
 }

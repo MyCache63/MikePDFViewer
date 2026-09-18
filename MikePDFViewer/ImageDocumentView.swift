@@ -27,28 +27,48 @@ final class ImageViewerController: ObservableObject {
     weak var scrollView: NSScrollView?
     weak var imageView: NSImageView?
 
-    /// Reads the bytes first so a sandbox denial surfaces as a real Cocoa
-    /// error (the Grant Access flow keys off that) instead of a nil image.
-    func load(url: URL) throws {
+    /// Reads and decodes off the caller's thread. The Grant Access flow keys
+    /// off Cocoa 257 from Data(contentsOf:), so we still read bytes first.
+    nonisolated static func loadPayload(at url: URL) throws -> Payload {
         let data = try Data(contentsOf: url)
         guard let loaded = NSImage(data: data) else {
             throw LoadError.unsupported(url.lastPathComponent)
         }
-        image = loaded
-        // NSImage.size is in points. The bitmap carries true pixels, which is
-        // what a person means when they ask how big an image is.
+        let size: CGSize
         if let rep = loaded.representations.first, rep.pixelsWide > 0 {
-            pixelSize = CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+            size = CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
         } else {
-            pixelSize = loaded.size
+            size = loaded.size
         }
-        fileSizeText = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+        let sizeText = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+        return Payload(image: loaded, pixelSize: size, fileSizeText: sizeText)
+    }
+
+    /// Applies a payload already read on a background queue.
+    func apply(_ payload: Payload) {
+        image = payload.image
+        pixelSize = payload.pixelSize
+        fileSizeText = payload.fileSizeText
+    }
+
+    /// Reads the bytes first so a sandbox denial surfaces as a real Cocoa
+    /// error (the Grant Access flow keys off that) instead of a nil image.
+    func load(url: URL) throws {
+        apply(try Self.loadPayload(at: url))
     }
 
     func clear() {
         image = nil
         pixelSize = .zero
         fileSizeText = ""
+    }
+
+    /// NSImage is not Sendable; the box is only for hopping a finished decode
+    /// onto the main actor after background I/O.
+    struct Payload: @unchecked Sendable {
+        let image: NSImage
+        let pixelSize: CGSize
+        let fileSizeText: String
     }
 
     var dimensionsText: String {

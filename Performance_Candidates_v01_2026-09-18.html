@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MikePDFViewer performance candidates - v01 - 2026-09-18</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --card: #1a2332;
+    --card-hi: #243044;
+    --text: #e7ecf3;
+    --muted: #93a0b4;
+    --accent: #3b82f6;
+    --accent-dim: #1e3a5f;
+    --rec: #22c55e;
+    --rec-bg: #14532d;
+    --warn: #f59e0b;
+    --warn-bg: #78350f;
+    --skip: #64748b;
+    --border: #2d3a4f;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 80px;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 1.45rem; margin: 0 0 6px; font-weight: 650; }
+  .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 18px; }
+  .rec-box {
+    background: linear-gradient(135deg, #12261a, #1a2332);
+    border: 1px solid #2f6b45;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+  }
+  .rec-box strong { color: var(--rec); }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 10px 0;
+  }
+  button {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:hover { background: var(--card-hi); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  .count { color: var(--muted); font-size: 0.9rem; margin-left: 4px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 14px 14px 12px;
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .card:has(input:checked) {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent-dim) 55%, var(--card));
+  }
+  .card input[type=checkbox] {
+    width: 18px;
+    height: 18px;
+    margin-top: 3px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .card h2 {
+    font-size: 1.02rem;
+    margin: 0 0 6px;
+    font-weight: 600;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+  .badge.rec { background: var(--rec-bg); color: #86efac; }
+  .badge.maybe { background: var(--warn-bg); color: #fcd34d; }
+  .badge.skip { background: #334155; color: #cbd5e1; }
+  .row { color: var(--muted); font-size: 0.92rem; margin: 3px 0; }
+  .row b { color: var(--text); font-weight: 560; }
+  .evidence {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: #a8b4c8;
+    background: #0c1118;
+    border-radius: 8px;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+  }
+  details { margin-top: 6px; }
+  summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+  .done {
+    margin-top: 22px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .done h3 { margin: 0 0 8px; font-size: 1rem; color: var(--muted); font-weight: 600; }
+  .done ul { margin: 0; padding-left: 1.2rem; color: var(--muted); font-size: 0.92rem; }
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--rec-bg);
+    color: #bbf7d0;
+    border: 1px solid #166534;
+    padding: 10px 16px;
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    font-weight: 600;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --card-hi: #eef2f7;
+      --text: #152033;
+      --muted: #5b6b82;
+      --border: #d5dde8;
+      --accent-dim: #dbeafe;
+      --rec-bg: #dcfce7;
+      --warn-bg: #fef3c7;
+    }
+    .rec-box { background: #f0fdf4; border-color: #86efac; }
+    .evidence { background: #f1f5f9; color: #334155; }
+    .card:has(input:checked) {
+      background: color-mix(in srgb, var(--accent-dim) 70%, white);
+    }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Performance candidates beyond v6.21 / v6.22</h1>
+  <p class="meta">v01 - 2026-09-18 06:50 PT &middot; Based on handover + code review of load/render paths. Measured leftovers from Responsiveness Review v02 stay marked as measured.</p>
+
+  <div class="rec-box">
+    <strong>My recommendation:</strong> do items 1 and 2 next (image + EML off the main thread). They are small, safe, and close the last sync open paths. Item 3 (page-change thrash) is the best feel win for PDF scrolling if you notice hitching while flipping pages. Leave the progressive first-page paint until a heavy PDF actually bothers you on device.
+  </div>
+
+  <div class="toolbar">
+    <button type="button" class="primary" id="copyBtn">Copy selected</button>
+    <button type="button" id="recBtn">Select my picks</button>
+    <button type="button" id="allBtn">Select all worth doing</button>
+    <button type="button" id="noneBtn">Clear</button>
+    <span class="count" id="countLabel">0 selected</span>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="done">
+    <h3>Already shipped (do not re-do)</h3>
+    <ul>
+      <li>v6.15.1: async markdown open, deferred Quick attributed string, WebKit prewarm, bookmark I/O off main</li>
+      <li>v6.21.0: PerfLog + Speed tab, deferred prewarm/reopen, text viewer line count and attributed string cached once, text read off main</li>
+      <li>Ruled out by measurement: framework link cost, form-field scan (~10 ms / 300 pages), bookmark resolve, temp purge, thumbnail prewarm (already background)</li>
+    </ul>
+  </div>
+</div>
+<div id="toast">Copied. Paste it back here.</div>
+
+<script>
+const items = [
+  {
+    id: 1,
+    title: "Open images off the main thread",
+    effort: "Small",
+    impact: "Medium on big HEIC / TIFF / PNG",
+    badge: "rec",
+    badgeLabel: "Recommended",
+    defaultOn: true,
+    why: "loadImageDocument still calls imageViewer.load on the main actor. That does Data(contentsOf:) + NSImage decode before the window can update. CSV and text already use a detached task; images should match.",
+    evidence: "ContentView.loadImageDocument → ImageViewerController.load(url:)\nData(contentsOf:) + NSImage(data:) on MainActor"
+  },
+  {
+    id: 2,
+    title: "Read and parse EML off the main thread",
+    effort: "Small",
+    impact: "Medium on large .eml with attachments",
+    badge: "rec",
+    badgeLabel: "Recommended",
+    defaultOn: true,
+    why: "loadEMLDocument uses Task { } inside a View, so it inherits MainActor. Data(contentsOf:) and EMLParser.parse therefore run on the UI thread before the async PDF convert. Move read+parse into Task.detached; keep UI assignment on MainActor.",
+    evidence: "ContentView.loadEMLDocument\nTask { Data(contentsOf:) ; EMLParser.parse ; await EMLToPDFConverter.convert }"
+  },
+  {
+    id: 3,
+    title: "Stop page changes from re-evaluating all of ContentView",
+    effort: "Medium",
+    impact: "High feel win while scrolling PDFs",
+    badge: "maybe",
+    badgeLabel: "If scroll feels sticky",
+    defaultOn: true,
+    why: "PDFViewPageChanged writes @State currentPage on ContentView (~2,700 lines, dozens of toolbar buttons and modifiers). Continuous scroll can fire this often and force SwiftUI to re-walk the whole tree. Isolate the page label (and anything else that needs currentPage) behind a small ObservableObject, or throttle updates.",
+    evidence: "PDFKitView.Coordinator.pageChanged → parent.currentPage = pageIndex\nContentView @State currentPage drives sidebar, toolbar, bookmarks, presentation"
+  },
+  {
+    id: 4,
+    title: "Cap the thumbnail NSCache",
+    effort: "Tiny",
+    impact: "Memory on long PDFs, not open speed",
+    badge: "rec",
+    badgeLabel: "Recommended",
+    defaultOn: true,
+    why: "thumbnailCache is an unbounded NSCache of Retina-sized page images. Prewarm already fills the first 20. Set countLimit / totalCostLimit and clear on document identity change so a 300-page session cannot keep growing.",
+    evidence: "ThumbnailSidebar.swift: private let thumbnailCache = NSCache<NSString, NSImage>()\nNo countLimit or totalCostLimit today"
+  },
+  {
+    id: 5,
+    title: "Progressive first-page paint for heavy PDFs",
+    effort: "Larger",
+    impact: "Measured 615 ms on your 58 MB AMD PDF",
+    badge: "maybe",
+    badgeLabel: "Only if that file annoys you",
+    defaultOn: false,
+    why: "Open is already fast (~39 ms). The wait is PDFKit drawing a complex first page. A cheap PDFPage.thumbnail (or CGPDF low-res) overlay, then swap to the live PDFView, puts pixels on screen sooner. Most work of anything left; v02 already said to wait until it bothers you on device.",
+    evidence: "Responsiveness Review v01/v02: 58 MB 1-page PDF\nOpen file 39 ms · First-page render 615 ms"
+  },
+  {
+    id: 6,
+    title: "Run PDF findString off the main thread",
+    effort: "Medium",
+    impact: "Medium on big searchable PDFs",
+    badge: "maybe",
+    badgeLabel: "Nice to have",
+    defaultOn: false,
+    why: "Live search is already debounced 200 ms, which was the right first fix. When the debounce fires, document.findString still runs synchronously inside updateNSView. For a dense OCR'd book that can hitch once. Background the search, then apply highlightedSelections on the main thread.",
+    evidence: "PDFKitView.Coordinator.search → document.findString(...)\nCalled from updateNSView after debouncedSearchText changes"
+  },
+  {
+    id: 7,
+    title: "Revisit dark-mode CIColorInvert cost",
+    effort: "Medium",
+    impact: "Only while Dark Reading Mode is on",
+    badge: "skip",
+    badgeLabel: "Skip unless sticky",
+    defaultOn: false,
+    why: "Dark Reading Mode installs a Core Image invert filter on the whole PDFView layer. That can cost GPU time on every scroll/zoom frame. Only worth changing if dark mode specifically feels worse than light. Alternatives are limited inside PDFKit.",
+    evidence: "PDFKitView makeNSView / updateNSView\npdfView.layer?.filters = [CIFilter(name: \"CIColorInvert\")!]"
+  },
+  {
+    id: 8,
+    title: "Split ContentView further for launch / type-checker",
+    effort: "Large",
+    impact: "Uncertain after v02 measurement correction",
+    badge: "skip",
+    badgeLabel: "Leave alone",
+    defaultOn: false,
+    why: "v01 suspected the giant view for leftover launch time. v02 corrected the launch number (642–819 ms real) and said there is no large unexplained gap left. Splitting still helps maintainability and the type-checker budget, but it is not a clear performance win today. Watch the Speed tab.",
+    evidence: "ContentView.swift ~2,738 lines\nLaunch to first window (instrumented): 642–819 ms"
+  }
+];
+
+const list = document.getElementById("list");
+const countLabel = document.getElementById("countLabel");
+const toast = document.getElementById("toast");
+
+function render() {
+  list.innerHTML = items.map(item => `
+    <label class="card" data-id="${item.id}">
+      <input type="checkbox" ${item.defaultOn ? "checked" : ""} data-id="${item.id}">
+      <div>
+        <h2>
+          <span>${item.id}. ${item.title}</span>
+          <span class="badge ${item.badge}">${item.badgeLabel}</span>
+        </h2>
+        <div class="row"><b>Effort:</b> ${item.effort} &nbsp;·&nbsp; <b>Impact:</b> ${item.impact}</div>
+        <div class="row">${item.why}</div>
+        <details>
+          <summary>Evidence in code</summary>
+          <div class="evidence">${item.evidence}</div>
+        </details>
+      </div>
+    </label>
+  `).join("");
+  list.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.addEventListener("change", updateCount);
+  });
+  updateCount();
+}
+
+function selectedIds() {
+  return [...list.querySelectorAll("input[type=checkbox]:checked")].map(cb => Number(cb.dataset.id));
+}
+
+function updateCount() {
+  const n = selectedIds().length;
+  countLabel.textContent = n + " selected";
+}
+
+function setSelection(predicate) {
+  list.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    const item = items.find(i => i.id === Number(cb.dataset.id));
+    cb.checked = predicate(item);
+  });
+  updateCount();
+}
+
+function buildCopyText() {
+  const ids = selectedIds();
+  if (!ids.length) return "No performance candidates selected.";
+  const lines = [
+    "MikePDFViewer performance picks (from Performance_Candidates_v01_2026-09-18.html)",
+    "Date: 2026-09-18",
+    "",
+    "Please implement these, in this order:"
+  ];
+  ids.forEach((id, index) => {
+    const item = items.find(i => i.id === id);
+    lines.push(`${index + 1}. [#${item.id}] ${item.title}`);
+    lines.push(`   Effort: ${item.effort}. Impact: ${item.impact}.`);
+    lines.push(`   ${item.why}`);
+    lines.push("");
+  });
+  lines.push("Skip everything else in that HTML for now unless I say otherwise.");
+  return lines.join("\n");
+}
+
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const text = buildCopyText();
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 1800);
+});
+
+document.getElementById("recBtn").addEventListener("click", () => {
+  setSelection(item => item.defaultOn);
+});
+document.getElementById("allBtn").addEventListener("click", () => {
+  setSelection(item => item.badge === "rec" || item.badge === "maybe");
+});
+document.getElementById("noneBtn").addEventListener("click", () => {
+  setSelection(() => false);
+});
+
+render();
+</script>
+</body>
+</html>

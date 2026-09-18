@@ -579,7 +579,11 @@ struct PDFKitView: NSViewRepresentable {
             guard let pdfView = notification.object as? PDFView,
                   let currentPage = pdfView.currentPage,
                   let pageIndex = pdfView.document?.index(for: currentPage) else { return }
+            // Skip no-op writes so SwiftUI observers are not woken on every
+            // layout pass while the visible page is unchanged.
+            guard pageIndex != parent.currentPage else { return }
             DispatchQueue.main.async {
+                guard pageIndex != self.parent.currentPage else { return }
                 self.parent.currentPage = pageIndex
             }
         }

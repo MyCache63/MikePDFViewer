@@ -1,6 +1,21 @@
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
+import Observation
+
+/// Page index/count live here so PDF scroll updates do not re-evaluate the
+/// whole ContentView tree. Views that display the page number observe this;
+/// ContentView itself only writes it from loaders and actions.
+@Observable
+final class DocumentPageState {
+    var currentPage: Int = 0
+    var totalPages: Int = 0
+
+    func reset() {
+        currentPage = 0
+        totalPages = 0
+    }
+}
 
 struct ContentView: View {
     @State var pdfURL: URL?
@@ -14,8 +29,7 @@ struct ContentView: View {
     @AppStorage("reuse-open-windows") private var reuseOpenWindows: Bool = true
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @State private var pdfDocument: PDFDocument?
-    @State private var currentPage: Int = 0
-    @State private var totalPages: Int = 0
+    @State private var pageState = DocumentPageState()
     @State private var searchText: String = ""
     @State private var debouncedSearchText: String = ""
     @State private var searchDebounceTask: Task<Void, Never>?
@@ -57,7 +71,7 @@ struct ContentView: View {
     /// PresentationWindowController), not a sheet, so it can cover the screen.
     private func startPresentation() {
         guard let document = pdfDocument else { return }
-        PresentationWindowController.shared.present(document: document, startPage: currentPage)
+        PresentationWindowController.shared.present(document: document, startPage: pageState.currentPage)
     }
     @State private var showSignatureSheet = false
     @State private var showRedactConfirm = false
@@ -271,7 +285,7 @@ struct ContentView: View {
                 if let document = pdfDocument {
                     PasswordSheet(document: document, onUnlock: {
                         documentVersion += 1
-                        totalPages = document.pageCount
+                        pageState.totalPages = document.pageCount
                     })
                 }
             }
@@ -299,7 +313,7 @@ struct ContentView: View {
                 onFind: { showSearch.toggle(); if !showSearch { searchText = "" } },
                 onEscape: { showSearch = false; searchText = "" },
                 onOCR: { if pdfDocument != nil { showOCRSheet = true } },
-                onGoToPage: { if totalPages > 0 { goToPageText = ""; showGoToPage = true } }
+                onGoToPage: { if pageState.totalPages > 0 { goToPageText = ""; showGoToPage = true } }
             ))
     }
 
@@ -367,7 +381,7 @@ struct ContentView: View {
         viewWithDocumentNotifications
             .onReceive(NotificationCenter.default.publisher(for: .pdfToggleBookmark)) { _ in
                 guard isKeyScene else { return }
-                if pdfDocument != nil { bookmarkManager.toggleBookmark(for: currentPage) }
+                if pdfDocument != nil { bookmarkManager.toggleBookmark(for: pageState.currentPage) }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfExtractPages)) { _ in
                 guard isKeyScene else { return }
@@ -393,7 +407,7 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfGoToPage)) { _ in
                 guard isKeyScene else { return }
-                if totalPages > 0 {
+                if pageState.totalPages > 0 {
                     goToPageText = ""
                     showGoToPage = true
                 }
@@ -415,7 +429,7 @@ struct ContentView: View {
                 guard isKeyScene else { return }
                 if pdfDocument != nil {
                     showSplitView.toggle()
-                    if showSplitView { splitCurrentPage = currentPage }
+                    if showSplitView { splitCurrentPage = pageState.currentPage }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfStartPresentation)) { _ in
@@ -572,10 +586,9 @@ struct ContentView: View {
     @ViewBuilder
     private var sidebarContent: some View {
         if let document = pdfDocument {
-            ThumbnailSidebar(
+            BoundThumbnailSidebar(
                 document: document,
-                currentPage: $currentPage,
-                totalPages: totalPages,
+                pageState: pageState,
                 documentVersion: documentVersion,
                 bookmarkManager: bookmarkManager,
                 onMovePage: { from, to in
@@ -824,9 +837,9 @@ struct ContentView: View {
     private var pdfContent: some View {
         ZStack {
             if let document = pdfDocument {
-                PDFKitView(
+                BoundPDFKitView(
                     document: document,
-                    currentPage: $currentPage,
+                    pageState: pageState,
                     searchText: debouncedSearchText,
                     darkMode: darkModeReading,
                     displayMode: displayMode
@@ -1140,7 +1153,7 @@ struct ContentView: View {
         .pickerStyle(.menu).frame(width: 130)
         .tooltip("Display Mode").disabled(pdfDocument == nil)
 
-        Button { showSplitView.toggle(); if showSplitView { splitCurrentPage = currentPage } } label: {
+        Button { showSplitView.toggle(); if showSplitView { splitCurrentPage = pageState.currentPage } } label: {
             Image(systemName: showSplitView ? "rectangle" : "rectangle.split.2x1")
         }
         .tooltip(showSplitView ? "Close Split View" : "Split View").disabled(pdfDocument == nil)
@@ -1158,10 +1171,11 @@ struct ContentView: View {
         }
         .tooltip("Markup Tools").disabled(pdfDocument == nil)
 
-        Button { bookmarkManager.toggleBookmark(for: currentPage) } label: {
-            Image(systemName: bookmarkManager.isBookmarked(currentPage) ? "bookmark.fill" : "bookmark")
-        }
-        .tooltip("Toggle Bookmark (Cmd+D)").disabled(pdfDocument == nil)
+        BookmarkToolbarButton(
+            pageState: pageState,
+            bookmarkManager: bookmarkManager,
+            enabled: pdfDocument != nil
+        )
 
         Button { showExtractSheet = true } label: {
             Image(systemName: "doc.badge.plus")
@@ -1219,21 +1233,12 @@ struct ContentView: View {
 
     @ViewBuilder
     private var statusToolbar: some View {
-        if totalPages > 0 {
-            Button {
-                goToPageText = ""
-                showGoToPage = true
-            } label: {
-                Text("Page \(currentPage + 1) of \(totalPages)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .tooltip("Go to Page (Cmd+Option+G)")
-            .popover(isPresented: $showGoToPage) {
-                goToPagePopover
-            }
-        }
+        PageStatusControl(
+            pageState: pageState,
+            showGoToPage: $showGoToPage,
+            goToPageText: $goToPageText,
+            onNavigate: { navigateToPage() }
+        )
 
         if formFieldCount > 0 {
             Label("\(formFieldCount) fields", systemImage: "rectangle.and.pencil.and.ellipsis")
@@ -1244,31 +1249,6 @@ struct ContentView: View {
         Text("v\(appVersion)")
             .font(.caption2)
             .foregroundStyle(.tertiary)
-    }
-
-    // MARK: - Go to Page
-
-    private var goToPagePopover: some View {
-        VStack(spacing: 12) {
-            Text("Go to Page")
-                .font(.headline)
-            HStack {
-                TextField("Page number", text: $goToPageText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .onSubmit { navigateToPage() }
-                Text("of \(totalPages)")
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Button("Cancel") { showGoToPage = false }
-                    .keyboardShortcut(.cancelAction)
-                Button("Go") { navigateToPage() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(Int(goToPageText) == nil)
-            }
-        }
-        .padding()
     }
 
     // MARK: - Make Searchable (on-device OCR)
@@ -1330,10 +1310,10 @@ struct ContentView: View {
                         makeSearchableMessage = "OCR finished but the rebuilt PDF could not be loaded. The original document is unchanged."
                         return
                     }
-                    let pageBefore = currentPage
+                    let pageBefore = pageState.currentPage
                     pdfDocument = newDoc
-                    totalPages = newDoc.pageCount
-                    currentPage = min(pageBefore, max(newDoc.pageCount - 1, 0))
+                    pageState.totalPages = newDoc.pageCount
+                    pageState.currentPage = min(pageBefore, max(newDoc.pageCount - 1, 0))
                     documentVersion += 1
                     documentDirty = true
                     makeSearchableMessage = "Added searchable text to \(result.ocrPageCount) page\(result.ocrPageCount == 1 ? "" : "s"). Cmd+F now works. Press Cmd+S to save."
@@ -1352,8 +1332,8 @@ struct ContentView: View {
 
     private func navigateToPage() {
         guard let pageNum = Int(goToPageText),
-              pageNum >= 1, pageNum <= totalPages else { return }
-        currentPage = pageNum - 1
+              pageNum >= 1, pageNum <= pageState.totalPages else { return }
+        pageState.currentPage = pageNum - 1
         showGoToPage = false
     }
 
@@ -1657,9 +1637,9 @@ struct ContentView: View {
             guard index >= 0, index < document.pageCount, document.pageCount > 1 else { continue }
             document.removePage(at: index)
         }
-        totalPages = document.pageCount
-        if currentPage >= totalPages {
-            currentPage = max(0, totalPages - 1)
+        pageState.totalPages = document.pageCount
+        if pageState.currentPage >= pageState.totalPages {
+            pageState.currentPage = max(0, pageState.totalPages - 1)
         }
         documentVersion += 1
         documentDirty = true
@@ -1679,12 +1659,12 @@ struct ContentView: View {
         documentDirty = true
 
         // Update current page to follow the moved page
-        if currentPage == source {
-            currentPage = destination
-        } else if source < destination && currentPage > source && currentPage <= destination {
-            currentPage -= 1
-        } else if source > destination && currentPage >= destination && currentPage < source {
-            currentPage += 1
+        if pageState.currentPage == source {
+            pageState.currentPage = destination
+        } else if source < destination && pageState.currentPage > source && pageState.currentPage <= destination {
+            pageState.currentPage -= 1
+        } else if source > destination && pageState.currentPage >= destination && pageState.currentPage < source {
+            pageState.currentPage += 1
         }
     }
 
@@ -1756,8 +1736,7 @@ struct ContentView: View {
     /// open so leftovers from the previous file cannot remain on screen.
     private func clearAllViewerState() {
         pdfDocument = nil
-        totalPages = 0
-        currentPage = 0
+        pageState.reset()
         documentVersion = 0
         formFieldCount = 0
         searchText = ""
@@ -1827,13 +1806,22 @@ struct ContentView: View {
 
     private func loadImageDocument(from url: URL, generation: UInt64) {
         guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
-        do {
-            try imageViewer.load(url: url)
-            isViewingImage = true
-            originalImageURL = url
-            finishLoad()
-        } catch {
-            handleOpenFailure(url: url, error: error)
+        Task.detached(priority: .userInitiated) {
+            do {
+                let payload = try ImageViewerController.loadPayload(at: url)
+                await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                    imageViewer.apply(payload)
+                    isViewingImage = true
+                    originalImageURL = url
+                    finishLoad()
+                }
+            } catch {
+                await MainActor.run {
+                    guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
+                    handleOpenFailure(url: url, error: error)
+                }
+            }
         }
     }
 
@@ -2337,8 +2325,8 @@ struct ContentView: View {
                     guard generationAtStart == loadGeneration,
                           originalMarkdownURL == url || pdfURL == url else { return }
                     pdfDocument = pdfDoc
-                    totalPages = pdfDoc.pageCount
-                    currentPage = 0
+                    pageState.totalPages = pdfDoc.pageCount
+                    pageState.currentPage = 0
                     documentVersion = 0
                     formFieldCount = 0
                     isViewingMarkdown = false
@@ -2438,8 +2426,8 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
                 pdfDocument = doc
-                totalPages = isLocked ? 0 : (doc?.pageCount ?? 0)
-                currentPage = 0
+                pageState.totalPages = isLocked ? 0 : (doc?.pageCount ?? 0)
+                pageState.currentPage = 0
                 documentVersion = 0
                 formFieldCount = fields
                 bookmarkManager.load(for: url)
@@ -2483,8 +2471,8 @@ struct ContentView: View {
                         return
                     }
                     pdfDocument = doc
-                    totalPages = doc.pageCount
-                    currentPage = 0
+                    pageState.totalPages = doc.pageCount
+                    pageState.currentPage = 0
                     documentVersion = 0
                     formFieldCount = 0
                     isViewingDOCX = true
@@ -2518,19 +2506,22 @@ struct ContentView: View {
         isConvertingEML = true
         emlConversionError = nil
         originalEMLURL = url
-        Task {
+        let loadExternal = loadExternalImages
+        // Read + parse off the main actor; convert hops back because the
+        // converter is @MainActor (WKWebView).
+        Task.detached(priority: .userInitiated) {
             do {
                 let data = try Data(contentsOf: url)
                 let message = try EMLParser.parse(data: data)
-                let doc = try await EMLToPDFConverter.convert(message, loadExternalImages: loadExternalImages)
+                let doc = try await EMLToPDFConverter.convert(message, loadExternalImages: loadExternal)
                 await MainActor.run {
                     guard acceptLoadIfCurrent(generation: generation, url: url) else {
                         isConvertingEML = false
                         return
                     }
                     pdfDocument = doc
-                    totalPages = doc.pageCount
-                    currentPage = 0
+                    pageState.totalPages = doc.pageCount
+                    pageState.currentPage = 0
                     documentVersion = 0
                     formFieldCount = 0
                     isViewingEML = true
@@ -2552,7 +2543,7 @@ struct ContentView: View {
                     isConvertingEML = false
                     finishLoad()
                     pdfDocument = nil
-                    totalPages = 0
+                    pageState.totalPages = 0
                 }
             }
         }
@@ -2564,7 +2555,7 @@ struct ContentView: View {
         let generation = loadGeneration
         // Keep pdfURL pointing at the EML; clear PDF surface then reconvert.
         pdfDocument = nil
-        totalPages = 0
+        pageState.totalPages = 0
         isLoadingDocument = true
         loadEMLDocument(from: url, generation: generation)
     }
@@ -2702,6 +2693,107 @@ private struct AccessRequestAlert: ViewModifier {
         } message: {
             Text("macOS hasn't let MikePDFViewer read \(url?.lastPathComponent ?? "this file") since the app was last launched. Click Grant Access, then Open in the panel, and the app will remember it.")
         }
+    }
+}
+
+// MARK: - Page-state isolation helpers
+// These child views observe DocumentPageState. ContentView only passes the
+// object through, so PDF scroll page changes do not rebuild the toolbar tree.
+
+private struct BoundPDFKitView: View {
+    let document: PDFDocument
+    @Bindable var pageState: DocumentPageState
+    let searchText: String
+    let darkMode: Bool
+    let displayMode: PDFDisplayMode
+
+    var body: some View {
+        PDFKitView(
+            document: document,
+            currentPage: $pageState.currentPage,
+            searchText: searchText,
+            darkMode: darkMode,
+            displayMode: displayMode
+        )
+    }
+}
+
+private struct BoundThumbnailSidebar: View {
+    let document: PDFDocument
+    @Bindable var pageState: DocumentPageState
+    let documentVersion: Int
+    @ObservedObject var bookmarkManager: BookmarkManager
+    var onMovePage: ((Int, Int) -> Void)?
+    var onDeletePages: (([Int]) -> Void)?
+
+    var body: some View {
+        ThumbnailSidebar(
+            document: document,
+            currentPage: $pageState.currentPage,
+            totalPages: pageState.totalPages,
+            documentVersion: documentVersion,
+            bookmarkManager: bookmarkManager,
+            onMovePage: onMovePage,
+            onDeletePages: onDeletePages
+        )
+    }
+}
+
+private struct PageStatusControl: View {
+    @Bindable var pageState: DocumentPageState
+    @Binding var showGoToPage: Bool
+    @Binding var goToPageText: String
+    let onNavigate: () -> Void
+
+    var body: some View {
+        if pageState.totalPages > 0 {
+            Button {
+                goToPageText = ""
+                showGoToPage = true
+            } label: {
+                Text("Page \(pageState.currentPage + 1) of \(pageState.totalPages)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .tooltip("Go to Page (Cmd+Option+G)")
+            .popover(isPresented: $showGoToPage) {
+                VStack(spacing: 12) {
+                    Text("Go to Page")
+                        .font(.headline)
+                    HStack {
+                        TextField("Page number", text: $goToPageText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                            .onSubmit { onNavigate() }
+                        Text("of \(pageState.totalPages)")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Button("Cancel") { showGoToPage = false }
+                            .keyboardShortcut(.cancelAction)
+                        Button("Go") { onNavigate() }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(Int(goToPageText) == nil)
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+}
+
+private struct BookmarkToolbarButton: View {
+    @Bindable var pageState: DocumentPageState
+    @ObservedObject var bookmarkManager: BookmarkManager
+    let enabled: Bool
+
+    var body: some View {
+        Button { bookmarkManager.toggleBookmark(for: pageState.currentPage) } label: {
+            Image(systemName: bookmarkManager.isBookmarked(pageState.currentPage) ? "bookmark.fill" : "bookmark")
+        }
+        .tooltip("Toggle Bookmark (Cmd+D)")
+        .disabled(!enabled)
     }
 }
 
