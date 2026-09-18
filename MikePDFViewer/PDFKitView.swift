@@ -285,9 +285,25 @@ class PrintablePDFView: PDFView {
 
     // MARK: - Mouse handling for drag/resize
 
+    /// True when the event is over one of the annotation types we edit by
+    /// drag/resize (signatures, sticky notes, free text). Everything else,
+    /// especially real PDF text, must go to PDFView so selection works.
+    private func movableAnnotation(at pagePoint: CGPoint, on page: PDFPage) -> PDFAnnotation? {
+        for annotation in page.annotations.reversed() {
+            guard annotation.bounds.contains(pagePoint) else { continue }
+            if annotation is SignatureAnnotation { return annotation }
+            if annotation.type == "Text" || annotation.type == "FreeText" { return annotation }
+        }
+        return nil
+    }
+
     override func mouseDown(with event: NSEvent) {
         let viewPoint = convert(event.locationInWindow, from: nil)
+        let interest = areaOfInterest(for: viewPoint)
+        let overText = interest.contains(.textArea)
+
         guard let page = page(for: viewPoint, nearest: true) else {
+            window?.makeFirstResponder(self)
             super.mouseDown(with: event)
             return
         }
@@ -324,14 +340,20 @@ class PrintablePDFView: PDFView {
                 return
             }
 
-            // Clicked elsewhere — finalize
+            // Clicked elsewhere: finalize, then fall through so the same
+            // click can start a text selection.
             finalizeAnnotation()
         }
 
-        // Check if clicking on any movable annotation to select it
-        for annotation in page.annotations {
-            guard annotation.bounds.contains(pagePoint) else { continue }
+        // Prefer native text selection whenever the pointer is over text.
+        // Only steal the click for our movable annotations.
+        if overText, movableAnnotation(at: pagePoint, on: page) == nil {
+            window?.makeFirstResponder(self)
+            super.mouseDown(with: event)
+            return
+        }
 
+        if let annotation = movableAnnotation(at: pagePoint, on: page) {
             if let sigAnnotation = annotation as? SignatureAnnotation {
                 sigAnnotation.isEditing = true
                 startEditing(sigAnnotation, on: page, type: "signature")
@@ -347,6 +369,7 @@ class PrintablePDFView: PDFView {
             }
         }
 
+        window?.makeFirstResponder(self)
         super.mouseDown(with: event)
     }
 

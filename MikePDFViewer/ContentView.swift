@@ -862,14 +862,18 @@ struct ContentView: View {
             }
 
             if showSearch, (pdfDocument != nil || isViewingMarkdown) {
+                // Spacer must not eat clicks or PDF/text selection dies
+                // while the find bar is open.
                 searchBar
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
 
             if annotationEditingMode {
                 VStack {
                     annotationEditingBanner
-                    Spacer()
+                    Spacer().allowsHitTesting(false)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
     }
@@ -1513,7 +1517,7 @@ struct ContentView: View {
     private var searchBar: some View {
         VStack {
             HStack {
-                Spacer()
+                Spacer().allowsHitTesting(false)
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
@@ -1576,7 +1580,7 @@ struct ContentView: View {
                 .padding(.trailing, 16)
                 .padding(.top, 8)
             }
-            Spacer()
+            Spacer().allowsHitTesting(false)
         }
     }
 
@@ -2029,6 +2033,9 @@ struct ContentView: View {
             ZoomControl(zoom: $zoomLevel) { value in applyZoom(value) }
                 .padding(.trailing, 16)
                 .padding(.bottom, 14)
+                // Keep hits on the capsule only so the rest of the detail
+                // pane still receives PDF text-selection drags.
+                .contentShape(Capsule())
         }
     }
 

@@ -1,18 +1,28 @@
 # MikePDFViewer Handover - August 13, 2026
 
-## Current State: v6.23.0 - Performance picks (image/EML off main, page isolation, thumbnail cache)
+## Current State: v6.23.1 - PDF text selection fixes
+
+**BUILD:** v6.23.1 Release + kit both succeed; installed. **Safety tag:** `before-pdf-text-selection-2026-09-18`
+**Detail:** `pdf_text_selection_v6.23.1_seymour.md`
+
+### Sep 18 - v6.23.1 Text selection in PDFs
+
+Michael reported he could not select text in PDFs. Fixes:
+
+1. **Find bar / annotation banner overlays** were filling the detail pane with a `Spacer` that ate mouse drags. Spacers now use `allowsHitTesting(false)`.
+2. **`PrintablePDFView.mouseDown`** now prefers native PDFKit text selection when `areaOfInterest` says the pointer is over text; annotation drag/resize only steals clicks on signatures, sticky notes, and free text. Also makes the PDFView first responder on click.
+3. Markdown Reader CSS: `user-select: text` so Reader mode stays selectable.
+
+Verified headlessly: drag-select on Kore_Citi PDF copied `aud alerting` via Cmd+C.
+
+**Please test:** quit/relaunch, open a text PDF, drag to select, Cmd+C. Also try with Cmd+F find bar open. Scans with no text layer still need Make Searchable first.
+
+---
+
+## Previous: v6.23.0 - Performance picks (image/EML off main, page isolation, thumbnail cache)
 
 **BUILD:** v6.23.0 Release + kit both succeed; installed. **Safety tag:** `before-perf-picks-2026-09-18`
-**Detail:** `perf_picks_v6.23.0_seymour.md` · picker: `Performance_Candidates_v01_2026-09-18.html`
-
-### Sep 18 - v6.23.0 Four performance picks Michael selected
-
-1. **Images:** `loadImageDocument` reads/decodes via `Task.detached` + `ImageViewerController.loadPayload`, then applies on MainActor.
-2. **EML:** read + parse on a detached task; convert still MainActor (WKWebView); UI apply on MainActor.
-3. **Page isolation:** `@Observable DocumentPageState` plus bound child views so PDF scroll page changes do not rebuild ContentView's toolbar tree. PDFKitView skips no-op page writes.
-4. **Thumbnail cache:** `countLimit` 80, `totalCostLimit` 40 MB, cost per entry, clear on document identity change.
-
-**Please test:** open a large PNG/HEIC, a large .eml, scroll a multi-page PDF (watch the page label update without hitch), open a long PDF and confirm memory stays sane. Speed tab timings for image/EML opens.
+**Detail:** `perf_picks_v6.23.0_seymour.md`
 
 ---
 

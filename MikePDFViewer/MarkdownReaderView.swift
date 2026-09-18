@@ -338,6 +338,8 @@ enum MarkdownReaderThemeBundle {
         line-height: var(--md-line-height);
         -webkit-font-smoothing: antialiased;
         word-wrap: break-word;
+        -webkit-user-select: text;
+        user-select: text;
     }
     .markdown-body {
         max-width: var(--md-content-width);
