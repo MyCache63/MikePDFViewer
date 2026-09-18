@@ -1,5 +1,24 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.24.0 - Rebuild Text Layer (OCR) for PDFs with a broken text layer
+
+**BUILD:** v6.24.0 Release, installed. **Safety tag:** `before-rebuild-text-layer-2026-09-18`
+**Detail:** `chrome_pdf_text_layer_v6.24.0_seymour.md`
+
+### Sep 18 - v6.24.0 Chrome-generated PDFs whose text cannot be clicked
+
+Michael reported text not clickable in `AMD_AIScreening_VendorComparison_v05_2026-09-18.pdf`. This is NOT the viewer (v6.23.1 had just fixed the real viewer bug). The file's Producer is `Skia/PDF m153`, Creator headless Chrome: its text layer sits at coordinates unrelated to the drawn text. Measured on page 1: `findString("recruiter")` and `"candidate"` return 0 hits though both are plainly visible; `selectionForWord` returns nothing at 24 of 63 sampled points and returns fragments elsewhere ("candidat", "ecurity"); extraction reads "A MD · I I NTERVIEW SCREEN I NG". PDFKit is faithful here, so Preview behaves the same.
+
+`SearchableOCRService` gained `TextLayerMode`: `.addWhereMissing` (existing behaviour, default) and `.rebuildAll`, which rasterises each page at 300 dpi and draws a fresh invisible OCR layer. Rasterising is required because the bad text lives in the page content stream; drawing the page as vectors would carry it over. Annotations are drawn on top of the raster with the page transform applied.
+
+New menu item Tools > Rebuild Text Layer (OCR), a `.pdfRebuildTextLayer` notification, and a confirmation alert stating the trade-off. `.alreadySearchable` from plain Make Searchable now offers the rebuild instead of showing a dead-end error.
+
+Verified on the AMD file: "recruiter" 0 -> 4 hits, "candidate" 0 -> 6 hits, clickable sample points 39/63 -> 44/54, words come back whole, 1.7 s for 2 pages, file 435 KB -> 1276 KB.
+
+**Upstream fix worth passing on:** these decks are printed by headless Chrome. Printing through WebKit instead, or removing the wide `letter-spacing` from headings/footers, avoids the problem at the source.
+
+---
+
 ## Current State: v6.23.1 - PDF text selection fixes
 
 **BUILD:** v6.23.1 Release + kit both succeed; installed. **Safety tag:** `before-pdf-text-selection-2026-09-18`

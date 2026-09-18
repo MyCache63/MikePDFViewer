@@ -21,6 +21,7 @@ extension Notification.Name {
     static let pdfToggleBookmark = Notification.Name("pdfToggleBookmark")
     static let pdfExtractPages = Notification.Name("pdfExtractPages")
     static let pdfMakeSearchable = Notification.Name("pdfMakeSearchable")
+    static let pdfRebuildTextLayer = Notification.Name("pdfRebuildTextLayer")
     static let pdfGoToPage = Notification.Name("pdfGoToPage")
     /// userInfo["format"] is an ExportFormat rawValue (pdf / docx / png).
     static let pdfExport = Notification.Name("pdfExport")

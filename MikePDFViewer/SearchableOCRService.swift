@@ -61,6 +61,21 @@ enum SearchableOCRService {
         }
     }
 
+    /// How much of the existing text to keep.
+    enum TextLayerMode {
+        /// Add OCR text only to pages that have none. Page content stays
+        /// vector, so nothing about the look changes.
+        case addWhereMissing
+        /// Replace every page with a 300 dpi image plus a fresh OCR text
+        /// layer. This is for PDFs whose text is present but unusable: text
+        /// exported by headless Chrome, for instance, often sits at the wrong
+        /// coordinates, so clicking a word selects nothing and Cmd+F misses
+        /// words that are plainly on the page. Rasterising is the only way to
+        /// get rid of that layer, since the bad text lives in the page's own
+        /// drawing instructions.
+        case rebuildAll
+    }
+
     /// Rebuilds the document with an invisible OCR text layer on pages that
     /// have none. Original page content is preserved as vectors (not
     /// rasterized); annotations are drawn into the page (they stay visible
@@ -70,6 +85,7 @@ enum SearchableOCRService {
     /// as pages complete, from the calling thread.
     static func makeSearchable(
         document: PDFDocument,
+        mode: TextLayerMode = .addWhereMissing,
         cancelFlag: CancelFlag? = nil,
         progress: (Int, Int) -> Void
     ) throws -> OCRResult {
@@ -82,7 +98,9 @@ enum SearchableOCRService {
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             needsOCR.append(text.isEmpty)
         }
-        guard needsOCR.contains(true) else { throw ServiceError.alreadySearchable }
+        if mode == .addWhereMissing, !needsOCR.contains(true) {
+            throw ServiceError.alreadySearchable
+        }
 
         let outputData = NSMutableData()
         guard let consumer = CGDataConsumer(data: outputData as CFMutableData),
@@ -114,17 +132,34 @@ enum SearchableOCRService {
                 let transform = pageRef.getDrawingTransform(
                     .cropBox, rect: box, rotate: 0, preserveAspectRatio: false
                 )
+                let wantsOCR = (mode == .rebuildAll) || needsOCR[i]
+                let raster = wantsOCR
+                    ? renderRaster(pageRef: pageRef, displayBox: box, transform: transform)
+                    : nil
+
                 context.saveGState()
                 context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
                 context.fill(box)
-                context.concatenate(transform)
-                context.drawPDFPage(pageRef)
-                for annotation in page.annotations {
-                    annotation.draw(with: .cropBox, in: context)
+                if mode == .rebuildAll, let raster {
+                    // Drawing the page as an image is what discards the old,
+                    // unusable text. Annotations are drawn on top afterwards.
+                    context.draw(raster, in: box)
+                    context.saveGState()
+                    context.concatenate(transform)
+                    for annotation in page.annotations {
+                        annotation.draw(with: .cropBox, in: context)
+                    }
+                    context.restoreGState()
+                } else {
+                    context.concatenate(transform)
+                    context.drawPDFPage(pageRef)
+                    for annotation in page.annotations {
+                        annotation.draw(with: .cropBox, in: context)
+                    }
                 }
                 context.restoreGState()
 
-                if needsOCR[i], let raster = renderRaster(pageRef: pageRef, displayBox: box, transform: transform) {
+                if wantsOCR, let raster {
                     let observations = (try? recognizeText(in: raster)) ?? []
                     if !observations.isEmpty { ocrPageCount += 1 }
                     drawInvisibleTextLayer(observations, mediaBox: box, into: context)

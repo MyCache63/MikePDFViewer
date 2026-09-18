@@ -247,6 +247,11 @@ struct MikePDFViewerApp: App {
                 }
                 .disabled(focusedDocument == nil)
 
+                Button("Rebuild Text Layer (OCR)...") {
+                    NotificationCenter.default.post(name: .pdfRebuildTextLayer, object: nil)
+                }
+                .disabled(focusedDocument == nil)
+
                 Button("Make Searchable (OCR)") {
                     NotificationCenter.default.post(name: .pdfMakeSearchable, object: nil)
                 }

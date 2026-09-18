@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var makeSearchableProgress: Double = 0
     @State private var makeSearchableCancelFlag = SearchableOCRService.CancelFlag()
     @State private var makeSearchableMessage: String?
+    @State private var showRebuildTextPrompt = false
     @State private var errorAlertMessage: String?
     /// File the sandbox refused to read; drives the Permission Needed alert.
     @State private var accessRequestURL: URL?
@@ -245,6 +246,12 @@ struct ContentView: View {
             } message: {
                 Text(makeSearchableMessage ?? "")
             }
+            .alert("Rebuild the text layer?", isPresented: $showRebuildTextPrompt) {
+                Button("Rebuild", role: .destructive) { makeSearchable(mode: .rebuildAll) }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This document already carries text, but some PDFs, especially ones exported by Chrome, place that text where it cannot be clicked or found. Rebuilding reads every page with OCR and replaces the text. Each page becomes an image, so the file grows and the pages stop being vector. Your original file is untouched until you use Save As.")
+            }
             .alert("Problem", isPresented: errorAlertShown) {
                 Button("OK") { errorAlertMessage = nil }
             } message: {
@@ -390,6 +397,10 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .pdfMakeSearchable)) { _ in
                 guard isKeyScene else { return }
                 makeSearchable()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfRebuildTextLayer)) { _ in
+                guard isKeyScene, pdfDocument != nil else { return }
+                showRebuildTextPrompt = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
                 guard isKeyScene else { return }
@@ -1289,7 +1300,7 @@ struct ContentView: View {
         .interactiveDismissDisabled()
     }
 
-    private func makeSearchable() {
+    private func makeSearchable(mode: SearchableOCRService.TextLayerMode = .addWhereMissing) {
         guard let document = pdfDocument, !isMakingSearchable else { return }
         isMakingSearchable = true
         makeSearchableProgress = 0
@@ -1300,7 +1311,7 @@ struct ContentView: View {
 
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try SearchableOCRService.makeSearchable(document: document, cancelFlag: cancelFlag) { done, total in
+                let result = try SearchableOCRService.makeSearchable(document: document, mode: mode, cancelFlag: cancelFlag) { done, total in
                     let fraction = Double(done) / Double(max(total, 1))
                     DispatchQueue.main.async { makeSearchableProgress = fraction }
                 }
@@ -1320,13 +1331,23 @@ struct ContentView: View {
                     pageState.currentPage = min(pageBefore, max(newDoc.pageCount - 1, 0))
                     documentVersion += 1
                     documentDirty = true
-                    makeSearchableMessage = "Added searchable text to \(result.ocrPageCount) page\(result.ocrPageCount == 1 ? "" : "s"). Cmd+F now works. Press Cmd+S to save."
+                    if mode == .rebuildAll {
+                        makeSearchableMessage = "Rebuilt the text layer on \(result.ocrPageCount) page\(result.ocrPageCount == 1 ? "" : "s"). Selecting, copying and Cmd+F should work now. The pages are images, so use Save As and keep the original."
+                    } else {
+                        makeSearchableMessage = "Added searchable text to \(result.ocrPageCount) page\(result.ocrPageCount == 1 ? "" : "s"). Cmd+F now works. Press Cmd+S to save."
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {
                     isMakingSearchable = false
                     // A user-initiated cancel needs no follow-up alert.
-                    if (error as? SearchableOCRService.ServiceError) != .cancelled {
+                    switch error as? SearchableOCRService.ServiceError {
+                    case .cancelled:
+                        break   // the user asked for it, no alert needed
+                    case .alreadySearchable:
+                        // Text exists, but it may be the unusable kind.
+                        showRebuildTextPrompt = true
+                    default:
                         makeSearchableMessage = error.localizedDescription
                     }
                 }
