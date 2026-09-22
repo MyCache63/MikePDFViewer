@@ -484,18 +484,37 @@ struct ContentView: View {
 
     /// If this file is already open somewhere, bring that window forward and
     /// report true so the caller skips loading a second copy.
+    /// True when this window actually has something on screen. Matching
+    /// `pdfURL` alone is not proof: after a failed load, or after the viewer
+    /// state was cleared, `pdfURL` still names the file while the window shows
+    /// the empty state.
+    private var isShowingADocument: Bool {
+        pdfDocument != nil || isViewingMarkdown || isViewingText || isViewingHTML
+            || isViewingSVG || isViewingImage || isViewingCSV || isViewingQuickLook
+            || isViewingEML || isLoadingDocument
+    }
+
     private func raiseWindowAlreadyShowing(_ url: URL) -> Bool {
         guard reuseOpenWindows else { return false }
 
-        // Already the front document in THIS window: nothing to load.
         if let current = pdfURL,
            OpenDocumentRegistry.key(for: current) == OpenDocumentRegistry.key(for: url) {
-            hostWindow?.makeKeyAndOrderFront(nil)
+            if isShowingADocument {
+                hostWindow?.makeKeyAndOrderFront(nil)
+                return true
+            }
+            // Same URL, empty window. Assigning pdfURL again would not fire
+            // onChange, so load it directly. Without this, clicking the file
+            // did nothing at all: it reached Recent Files and stopped.
+            AppLog.write("Reopening \(url.lastPathComponent) into an empty window")
+            loadDocument(from: url)
             return true
         }
 
         guard let existing = OpenDocumentRegistry.shared.window(showing: url,
-                                                               excluding: hostWindow) else {
+                                                               excluding: hostWindow),
+              existing.isVisible else {
+            // No other window has it, or the one that claimed it is gone.
             return false
         }
         if existing.isMiniaturized { existing.deminiaturize(nil) }
@@ -2007,6 +2026,9 @@ struct ContentView: View {
                 && !FileManager.default.isReadableFile(atPath: url.path)
         }
         AppLog.write("Open FAILED \(url.path) denied=\(denied) error=\(error.map { String(describing: $0) } ?? "nil")")
+        // Stop this window claiming a file it never managed to show, which
+        // would block the next click on it.
+        OpenDocumentRegistry.shared.update(url: nil, for: hostWindow)
         if denied {
             accessRequestURL = url
         } else if let error {

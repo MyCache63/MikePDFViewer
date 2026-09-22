@@ -1,5 +1,22 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.25.0 - Skipped-open bug fixed, app now signed with Developer ID
+
+**BUILD:** v6.25.0 Release, installed, signed `Developer ID Application: Michael Ashe (YUULGM962G)`. **Safety tag:** `before-open-skip-and-signing-2026-09-22`
+**Detail:** `sluggish_and_wont_open_v6.25.0_seymour.md`
+
+### Sep 22 - v6.25.0 Clicking a file did nothing; sluggishness diagnosed
+
+Michael: clicking a file opened the app, added it to Recent Files, but showed no document; also very sluggish. The diagnostic log settled all of it.
+
+**Bug (mine, from v6.17.0).** Log shows the file added to recents at 12:32:38Z and 12:33:08Z with NO `PERF open` line either time. `raiseWindowAlreadyShowing` returned true whenever `pdfURL` matched, without checking that anything was on screen. After a cleared or failed load, `pdfURL` still names the file while the window shows the empty state, so every click was refused and re-clicking could not help. Fix: new `isShowingADocument` guard; when the path matches but the window is empty it calls `loadDocument(from:)` directly (re-assigning `pdfURL` would not fire `onChange`); the other-window branch now also requires `existing.isVisible`; `handleOpenFailure` clears the window's registry entry so a retry is not blocked.
+
+**Signing.** Every `recentFiles.add` has been failing with Cocoa 256 "Failed to retrieve app-scope key" for days, which is why recents lose permission. Cause: the app was ad-hoc signed with no TeamIdentifier, and macOS will not issue an app-scope key without one. Project switched to `CODE_SIGN_STYLE = Manual`, `CODE_SIGN_IDENTITY = "Developer ID Application"`, `DEVELOPMENT_TEAM = YUULGM962G`. Verified: TeamIdentifier present, sandbox entitlements intact, `codesign --verify --deep --strict` passes, no quarantine attribute after install. Unverified until he relaunches: whether bookmarks now succeed (the log will say "bookmark saved"). Could not test live without quitting his 40 open windows.
+
+**Sluggishness, measured.** 40 windows, 773 MB resident, about 19 MB per window, nothing released for inactive windows. Those 371 KB CVS PDFs took 2697-3837 ms to open. Offered three options and asked him to choose: a Close All Documents command, freeing inactive windows' page/thumbnail caches, and a warning at ~15 windows.
+
+---
+
 ## Current State: v6.24.0 - Rebuild Text Layer (OCR) for PDFs with a broken text layer
 
 **BUILD:** v6.24.0 Release, installed. **Safety tag:** `before-rebuild-text-layer-2026-09-18`
