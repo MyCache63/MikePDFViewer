@@ -1,5 +1,23 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.26.0 - Background windows sleep; warning at 15 windows
+
+**BUILD:** v6.26.0 Release + kit both succeed; installed; Developer ID signed. **Safety tag:** `before-window-sleep-2026-09-23`
+**Detail:** `window_sleep_and_warning_v6.26.0_seymour.md`
+**IMPORTANT:** as of Sep 23 Michael's running process (pid 64181) dated from Sep 18 with 49 windows, so v6.24-v6.26 were not yet live. Bookmark failures logged on Sep 22-23 came from that old ad-hoc build, so the signing fix is still unverified. After he relaunches, grep the log for "bookmark saved".
+
+### Sep 23 - v6.26.0 Window sleep and window-count warning (Michael approved options 2 and 3)
+
+`WindowSleep.swift` (app-only, excluded in Package.swift): `WindowLifecycleListener` modifier (controlActiveState changes, a 60 s `.task` tick, and the `.sleepBackgroundWindows` notification), `SleepingWindowView`, `TooManyWindowsBanner`. Attached to the detail pane in `mainView`, next to the zoom overlay, because the body chain has no type-checker headroom.
+
+ContentView: `inactiveSince` starts when the window leaves key; `sleepIfIdle()` runs each minute and sleeps after `sleep-after-minutes` (default 5, 0 = never) **only if the window is not visible on screen** (`occlusionState` lacks `.visible`, or miniaturized). `canSleep` refuses when dirty, annotating, OCR/DOCX/markdown-render running, `renderedPDFTempURL != nil`, `isViewingDOCX`, split view, or presenting. `sleepNow()` records `lastLoadedURL`, clears viewer state, `htmlBrowser.unload()`s, and remembers the PDF page. `windowBecameKey()` calls `loadDocument(from:)` directly; `finishLoad()` restores the page 0.15 s later when `restorePage.url == lastLoadedURL`. Any real open clears `sleepingURL`. The menu command and banner button sleep every non-key window regardless of visibility.
+
+Warning: `OpenDocumentRegistry.liveWindowCount` and `hasWarnedAboutWindowCount` (reset when the count falls below the threshold). `checkWindowCount()` runs when a window attaches. Threshold `window-warning-threshold` (default 15, 0 = never). Both settings are in Settings > General. `PerfLog.residentMB()` added; "window slept" and "window warning" events log app memory.
+
+Measured headlessly: three drawn documents held 132 MB; releasing them freed 72 MB within 2 s (55%). The remainder is shared framework cache that does not scale with window count. Not tested live, because doing so meant quitting Michael's 49 windows.
+
+---
+
 ## Current State: v6.25.0 - Skipped-open bug fixed, app now signed with Developer ID
 
 **BUILD:** v6.25.0 Release, installed, signed `Developer ID Application: Michael Ashe (YUULGM962G)`. **Safety tag:** `before-open-skip-and-signing-2026-09-22`

@@ -234,6 +234,13 @@ struct MikePDFViewerApp: App {
                 .keyboardShortcut("p", modifiers: .command)
             }
 
+            // MARK: Window Menu
+            CommandGroup(after: .windowArrangement) {
+                Button("Put Background Windows to Sleep") {
+                    NotificationCenter.default.post(name: .sleepBackgroundWindows, object: nil)
+                }
+            }
+
             // MARK: Tools Menu
             CommandMenu("Tools") {
                 Button("Toggle Bookmark") {

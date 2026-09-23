@@ -25,6 +25,12 @@ final class HTMLBrowserController: NSObject, ObservableObject, WKNavigationDeleg
         webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
     }
 
+    /// Replaces the page with a blank one so its web content process can
+    /// release the memory while the window sleeps.
+    func unload() {
+        webView.loadHTMLString("", baseURL: nil)
+    }
+
     func goBack() { webView.goBack() }
     func goForward() { webView.goForward() }
     func reload() { webView.reload() }

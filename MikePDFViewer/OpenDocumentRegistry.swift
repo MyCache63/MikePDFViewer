@@ -52,6 +52,17 @@ final class OpenDocumentRegistry {
         return nil
     }
 
+    /// Document windows currently open.
+    var liveWindowCount: Int {
+        prune()
+        return entries.count
+    }
+
+    /// Set once the too-many-windows banner has been shown, and cleared when
+    /// the count drops back under the threshold, so the warning appears once
+    /// per crossing instead of in every new window.
+    var hasWarnedAboutWindowCount = false
+
     private func prune() {
         entries = entries.filter { $0.value.window != nil }
     }

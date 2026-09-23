@@ -143,6 +143,15 @@ struct ContentView: View {
     @State private var originalImageURL: URL?
     @StateObject private var imageViewer = ImageViewerController()
     @State private var zoomLevel: Double = 1.0
+    // Window sleep: a background window releases its document and reloads it
+    // when brought forward again.
+    @State private var sleepingURL: URL?
+    @State private var inactiveSince: Date?
+    @State private var restorePage: (url: URL, page: Int)?
+    @State private var showWindowWarning = false
+    @State private var windowWarningCount = 0
+    @AppStorage("sleep-after-minutes") private var sleepAfterMinutes: Int = 5
+    @AppStorage("window-warning-threshold") private var windowWarningThreshold: Int = 15
     @State private var loadStartedAt: Date?
     @State private var loadKind: String = ""
     @State private var didInitialLoad = false
@@ -478,6 +487,7 @@ struct ContentView: View {
                 guard hostWindow !== window else { return }
                 hostWindow = window
                 OpenDocumentRegistry.shared.update(url: pdfURL, for: window)
+                checkWindowCount()
             })
             .onDisappear { OpenDocumentRegistry.shared.forget(hostWindow) }
     }
@@ -592,6 +602,13 @@ struct ContentView: View {
         } detail: {
             detailContent
                 .overlay(alignment: .bottomTrailing) { zoomOverlay }
+                .overlay(alignment: .top) { windowWarningOverlay }
+                .modifier(WindowLifecycleListener(
+                    activeState: controlActiveState,
+                    onBecameKey: { windowBecameKey() },
+                    onLeftKey: { windowLeftKey() },
+                    onMinuteTick: { sleepIfIdle() },
+                    onSleepRequest: { sleepForRequest() }))
         }
         .navigationSplitViewColumnWidth(min: 120, ideal: 160, max: 250)
         .navigationTitle(pdfURL?.lastPathComponent ?? "MikePDFViewer")
@@ -1490,7 +1507,16 @@ struct ContentView: View {
 
     // MARK: - Empty State
 
+    @ViewBuilder
     private var emptyState: some View {
+        if let asleep = sleepingURL {
+            SleepingWindowView(fileName: asleep.lastPathComponent)
+        } else {
+            awakeEmptyState
+        }
+    }
+
+    private var awakeEmptyState: some View {
         VStack(spacing: 20) {
             Image(systemName: "doc.text")
                 .font(.system(size: 60))
@@ -1745,6 +1771,7 @@ struct ContentView: View {
         // Drop the previous document immediately so title/content cannot show
         // a mix of old pages and a new filename while the new file loads.
         clearAllViewerState()
+        sleepingURL = nil
         zoomLevel = 1.0
         loadStartedAt = Date()
         loadKind = url.pathExtension.lowercased()
@@ -1827,6 +1854,15 @@ struct ContentView: View {
     /// One exit point for every loader, so each open is timed once.
     private func finishLoad() {
         isLoadingDocument = false
+        if let restore = restorePage, restore.url == lastLoadedURL {
+            restorePage = nil
+            let page = restore.page
+            // Give the new PDF view a moment to exist before moving it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard pdfDocument != nil, pageState.totalPages > 0 else { return }
+                pageState.currentPage = min(page, pageState.totalPages - 1)
+            }
+        }
         guard let started = loadStartedAt else { return }
         loadStartedAt = nil
         PerfLog.shared.record("open .\(loadKind)", since: started,
@@ -2058,6 +2094,100 @@ struct ContentView: View {
         } else {
             pdfURL = chosen
         }
+    }
+
+    // MARK: - Window sleep
+
+    private func windowBecameKey() {
+        inactiveSince = nil
+        if let url = sleepingURL {
+            // Reload what the window was showing. pdfURL never changed, so
+            // onChange will not do it for us.
+            PerfLog.shared.record("window woke", milliseconds: 0, detail: url.lastPathComponent)
+            loadDocument(from: url)
+        }
+    }
+
+    private func windowLeftKey() {
+        if inactiveSince == nil { inactiveSince = Date() }
+    }
+
+    /// Runs once a minute in every window.
+    private func sleepIfIdle() {
+        guard sleepAfterMinutes > 0, !isKeyScene, sleepingURL == nil,
+              let since = inactiveSince,
+              Date().timeIntervalSince(since) >= Double(sleepAfterMinutes) * 60 else { return }
+        // A window you can still see stays awake, so a document open on a
+        // second screen never goes blank while you read it.
+        if let window = hostWindow, window.occlusionState.contains(.visible), !window.isMiniaturized {
+            return
+        }
+        sleepNow()
+    }
+
+    /// Window menu command, or the banner's button: every window except the
+    /// front one sleeps now, whether or not it is visible.
+    private func sleepForRequest() {
+        guard !isKeyScene, sleepingURL == nil else { return }
+        sleepNow()
+    }
+
+    /// True when releasing the document would lose nothing.
+    private var canSleep: Bool {
+        guard isShowingADocument, !isLoadingDocument, lastLoadedURL != nil else { return false }
+        // Unsaved work, and anything built in memory that a reload could not
+        // rebuild exactly, keeps the window awake.
+        if documentDirty || annotationEditingMode || isMakingSearchable { return false }
+        if isConvertingDOCX || isRenderingMarkdownPDF || renderedPDFTempURL != nil { return false }
+        if isViewingDOCX || showSplitView || PresentationWindowController.shared.isPresenting { return false }
+        return true
+    }
+
+    private func sleepNow() {
+        guard canSleep, let url = lastLoadedURL else { return }
+        let page = pageState.currentPage
+        let kind = url.pathExtension.lowercased()
+        clearAllViewerState()
+        htmlBrowser.unload()
+        sleepingURL = url
+        if kind == "pdf", page > 0 {
+            restorePage = (url, page)
+        }
+        PerfLog.shared.record("window slept", milliseconds: 0,
+                              detail: "\(url.lastPathComponent), app now \(PerfLog.residentMB()) MB")
+    }
+
+    // MARK: - Too many windows
+
+    @ViewBuilder
+    private var windowWarningOverlay: some View {
+        if showWindowWarning {
+            TooManyWindowsBanner(
+                count: windowWarningCount,
+                onSleepOthers: {
+                    showWindowWarning = false
+                    NotificationCenter.default.post(name: .sleepBackgroundWindows, object: nil)
+                },
+                onDismiss: { showWindowWarning = false })
+        }
+    }
+
+    /// Called when a new window appears. Warns once each time the count
+    /// crosses the threshold.
+    private func checkWindowCount() {
+        let registry = OpenDocumentRegistry.shared
+        let count = registry.liveWindowCount
+        guard windowWarningThreshold > 0 else { return }
+        if count < windowWarningThreshold {
+            registry.hasWarnedAboutWindowCount = false
+            return
+        }
+        guard !registry.hasWarnedAboutWindowCount else { return }
+        registry.hasWarnedAboutWindowCount = true
+        windowWarningCount = count
+        showWindowWarning = true
+        PerfLog.shared.record("window warning", milliseconds: 0,
+                              detail: "\(count) windows, app \(PerfLog.residentMB()) MB")
     }
 
     // MARK: - Zoom

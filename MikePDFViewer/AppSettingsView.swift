@@ -111,6 +111,8 @@ private struct GeneralSettingsTab: View {
     @AppStorage("reopenLastDocument") private var reopenLastDocument = true
     @AppStorage("reuse-open-windows") private var reuseOpenWindows = true
     @AppStorage("thumbnail-max-width") private var thumbnailMaxWidth: Double = 200
+    @AppStorage("sleep-after-minutes") private var sleepAfterMinutes: Int = 5
+    @AppStorage("window-warning-threshold") private var windowWarningThreshold: Int = 15
 
     var body: some View {
         Form {
@@ -131,6 +133,22 @@ private struct GeneralSettingsTab: View {
                 Text("\(Int(thumbnailMaxWidth)) pt")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Stepper(value: $sleepAfterMinutes, in: 0...60) {
+                    Text(sleepAfterMinutes == 0
+                         ? "Background windows never sleep"
+                         : "Background windows sleep after \(sleepAfterMinutes) min")
+                }
+                Text("A sleeping window lets go of its document and reopens it when you click into it. Windows you can still see, and ones with unsaved changes, stay awake.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Stepper(value: $windowWarningThreshold, in: 0...100, step: 5) {
+                Text(windowWarningThreshold == 0
+                     ? "Never warn about open windows"
+                     : "Warn at \(windowWarningThreshold) open windows")
             }
             HStack {
                 Spacer()

@@ -44,6 +44,7 @@ let package = Package(
                 "DocumentExporter.swift",
                 "AppLog.swift",
                 "PerfLog.swift",
+                "WindowSleep.swift",
                 "PDFCompareService.swift",
                 "PDFCompareView.swift",
                 "PDFKitView.swift",
