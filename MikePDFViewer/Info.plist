@@ -26,6 +26,7 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.email-message</string>
+				<string>com.apple.mail.email</string>
 				<string>com.mikeashe.MikePDFViewer.eml</string>
 			</array>
 		</dict>

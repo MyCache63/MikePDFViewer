@@ -1,5 +1,19 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.26.1 - Default app for every type the viewer opens (pending Michael's clicks)
+
+**BUILD:** v6.26.1 Release, installed. **Safety tag:** `before-default-apps-2026-09-28`
+
+### Sep 28 - v6.26.1 Make MikePDFViewer the default app
+
+Michael double-clicked a .md and Xcode opened. Before the change: .md/.markdown Xcode, .log Console, .eml Mail, .html/.htm Edge, .csv/.tsv Numbers, images Preview; .pdf/.txt/.json/.svg were already ours. Word, PowerPoint and Keynote were deliberately left alone, because he edits those and the viewer only previews them.
+
+`scripts/set_default_apps.swift` now covers pdf, md, markdown, txt, log, json, svg, eml, html, htm, csv, tsv, png, jpg, jpeg, gif, heic, tiff, bmp, webp, and prints each type's previous owner for undo (`duti -s <old bundle id> <ext> all`). Info.plist now also claims `com.apple.mail.email`, which is the type macOS actually gives .eml files.
+
+**macOS 26.4.1 finding:** the API returns success but only queues a "Use MikePDFViewer / Keep <old app>" dialog per type; nothing changes until Michael clicks Use. Verified by reading CoreServicesUIAgent's windows (three were visible, including a duplicate .md one from a `duti` test) and by the LaunchServices secure plist, which had no new entries. Registry line in `~/.claude/rules/tools.md` updated. **Next step:** after he clicks through, run `swift scripts/verify_default_apps.swift` to confirm.
+
+---
+
 ## Current State: v6.26.0 - Background windows sleep; warning at 15 windows
 
 **BUILD:** v6.26.0 Release + kit both succeed; installed; Developer ID signed. **Safety tag:** `before-window-sleep-2026-09-23`
