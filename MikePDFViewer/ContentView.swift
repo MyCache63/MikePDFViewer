@@ -479,6 +479,12 @@ struct ContentView: View {
             .modifier(AccessRequestAlert(url: $accessRequestURL, onGrant: grantAccessAndReload))
             .onOpenURL { url in
                 didInitialLoad = true
+                // A web link reaches here only if macOS has been told this app
+                // is the browser. Say so plainly, and keep it out of Recents.
+                guard url.isFileURL else {
+                    refuseWebLink(url)
+                    return
+                }
                 recentFiles.add(url)
                 if raiseWindowAlreadyShowing(url) { return }
                 pdfURL = url
@@ -531,6 +537,15 @@ struct ContentView: View {
         existing.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         return true
+    }
+
+    /// A web link reaches the app only if macOS has been told it is the
+    /// browser. Kept out of the view chain, which is at the type-checker limit.
+    private func refuseWebLink(_ url: URL) {
+        AppLog.write("Refused web link " + url.absoluteString)
+        let site = url.host ?? url.absoluteString
+        errorAlertMessage = "That was a web link (" + site + "), and MikePDFViewer only opens files. "
+            + "If web links keep coming here, choose your browser in System Settings > Desktop & Dock > Default web browser."
     }
 
     private func handleAppear() {

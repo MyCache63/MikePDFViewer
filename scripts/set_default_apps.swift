@@ -20,7 +20,10 @@ import UniformTypeIdentifiers
 let bundleID = "com.mikeashe.MikePDFViewer"
 let extensions = [
     "pdf", "md", "markdown", "txt", "log", "json", "svg",
-    "eml", "html", "htm", "csv", "tsv",
+    // NOT html or htm: on macOS 26, taking .html also makes the app the
+    // default WEB BROWSER, so every web link opened in the viewer and failed
+    // (29 Sep 2026). The viewer still opens .html via Open With or File > Open.
+    "eml", "csv", "tsv",
     "png", "jpg", "jpeg", "gif", "heic", "tiff", "bmp", "webp",
 ]
 

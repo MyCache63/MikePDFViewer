@@ -1,5 +1,17 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.26.2 - Web browser default restored to Edge; web links refused cleanly
+
+**BUILD:** v6.26.2 Release, installed. **Safety tag:** `before-browser-fix-2026-09-29`
+
+### Sep 29 - v6.26.2 The viewer had become the default web browser
+
+After Michael clicked through the v6.26.1 default-app dialogs, the LaunchServices store showed MikePDFViewer on `http`, `https`, `public.html` and `com.apple.default-app.web-browser`. On macOS 26, taking .html also takes the browser role, so web links (for example https://abc7news.com/videoClip/19882675/) opened in the viewer and failed with "Could not open 19882675". My fault: v6.26.1 included html/htm.
+
+Fixed: Edge (`/Applications/Microsoft Edge2.app`, `com.microsoft.edgemac`) set back with `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme: "http")`; verified in a fresh process that http, https and .html all resolve to Edge. `scripts/set_default_apps.swift` no longer lists html/htm, with the reason in a comment. `onOpenURL` now refuses non-file URLs through `refuseWebLink(_:)`, with a plain message pointing at System Settings, and keeps them out of Recents (they had added bogus entries like "19882675"; those drop off on next launch because the paths don't exist). tools.md registry line updated with the trap.
+
+---
+
 ## Current State: v6.26.1 - Default app for every type the viewer opens (pending Michael's clicks)
 
 **BUILD:** v6.26.1 Release, installed. **Safety tag:** `before-default-apps-2026-09-28`
