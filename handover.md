@@ -1,5 +1,20 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.27.0 - Opens no longer slow down with many windows
+
+**BUILD:** v6.27.0 Release + kit both succeed; installed. **Safety tag:** `before-open-speed-many-windows-2026-10-04`
+**Detail:** `many_windows_open_speed_v6.27.0_seymour.md`
+
+### Oct 4 - v6.27.0 Every open rebuilt every window
+
+Log: PDF opens median 1.6 s (max 5.8 s) since Sep 25, though files read in 0-18 ms. New `PERF pdf split` log line separates read time from main-thread wait. Measured in a hidden test copy (bundle id `com.mikeashe.MikePDFViewer.perftest`, product `MikePDFPerfTest`, built to the scratchpad with `-derivedDataPath`, launched `open -n -g -j`, files sent with `open -g -a`; script `perfrun.sh` in the session scratchpad). Its container `~/Library/Containers/com.mikeashe.MikePDFViewer.perftest` was left in place.
+
+Main-thread wait before: 297-472 ms at 2-4 windows, 1,551-6,939 ms at 29-33. After: 115-122 ms and 135-144 ms. Causes: (1) `@EnvironmentObject RecentFilesManager` in every ContentView, and every open calls `recentFiles.add`, so every window's body re-ran; (2) the App struct held `@StateObject recentFiles`, `@AppStorage` and four `@FocusedValue`s, so focus changes re-ran the App body and pushed into every window.
+
+Fix: `RecentFilesManager.shared`; ContentView reads it through a computed property (never observed); new `RecentFilesShortList` is the only window view that observes it. All menus moved into `struct AppCommands: Commands` (owns `openWindow`, the observed recents, `reopenLastDocument`, the focused values and the action helpers); the App struct now has no observed state, with a comment saying why. Menus verified intact in the test copy via System Events (File 19, View 17, Tools 8, Window 18 items). **Rule: never put observed state in the App struct or an EnvironmentObject that every window reads.**
+
+---
+
 ## Current State: v6.26.3 - Thumbnails no longer show another document's pages
 
 **BUILD:** v6.26.3 Release + kit both succeed; installed. **Safety tag:** `before-thumbnail-identity-2026-10-04`

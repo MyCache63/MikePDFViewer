@@ -1,6 +1,10 @@
 import Foundation
 
 class RecentFilesManager: ObservableObject {
+    /// One list for the whole app.  Windows read it without observing it, so
+    /// adding a file does not make every open window rebuild.
+    static let shared = RecentFilesManager()
+
     @Published var recentURLs: [URL] = []
 
     private let key = "recentPDFFiles"

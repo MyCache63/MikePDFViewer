@@ -77,13 +77,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MikePDFViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @Environment(\.openWindow) private var openWindow
-    @StateObject private var recentFiles = RecentFilesManager()
-    @AppStorage("reopenLastDocument") private var reopenLastDocument = true
-    @FocusedValue(\.pdfDocument) var focusedDocument
-    @FocusedValue(\.pdfFileURL) var focusedURL
-    @FocusedValue(\.isDarkMode) var isDarkMode
-    @FocusedValue(\.displayModeRawValue) var displayModeRaw
+    // No observed state lives here on purpose.  Anything the App struct
+    // observes re-runs its body, which reaches every open window; with 30+
+    // windows that cost seconds on every open (measured 4 Oct 2026).  The
+    // menus and their state live in AppCommands instead.
 
     init() {
         // Standalone app uses ~/Documents/MikePDFViewer/tmp (sandboxing maps
@@ -101,273 +98,8 @@ struct MikePDFViewerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(recentFiles)
         }
-        .commands {
-            // MARK: File Menu
-            CommandGroup(replacing: .newItem) {
-                Button("Open File...") {
-                    openPDF()
-                }
-                .keyboardShortcut("o", modifiers: .command)
-
-                Divider()
-
-                Button("Save") {
-                    saveDocument()
-                }
-                .keyboardShortcut("s", modifiers: .command)
-                .disabled(focusedDocument == nil)
-
-                Button("Save As...") {
-                    saveDocumentAs()
-                }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(focusedDocument == nil)
-
-                // Works in every viewer mode (PDF, Markdown, text, Word), so it
-                // is not gated on focusedDocument; ContentView checks canExport.
-                Menu("Export") {
-                    ForEach([ExportFormat.pdf, .docx, .png], id: \.self) { format in
-                        Button(format.menuTitle) {
-                            NotificationCenter.default.post(name: .pdfExport, object: nil,
-                                                            userInfo: ["format": format.rawValue])
-                        }
-                    }
-                }
-
-                Divider()
-
-                Menu("Open With") {
-                    if let url = focusedURL {
-                        let kind = OpenWithFileKind.detect(url: url)
-                        let apps = OpenWithHelpers.curatedApps(for: kind)
-                        ForEach(apps, id: \.self) { app in
-                            Button(OpenWithHelpers.displayName(for: app)) {
-                                OpenWithHelpers.openIn(app: app, file: url)
-                            }
-                        }
-                        if !apps.isEmpty {
-                            Divider()
-                        }
-                        Button("Other…") {
-                            OpenWithHelpers.showOtherPicker(file: url)
-                        }
-                    } else {
-                        Text("No file open")
-                    }
-                }
-
-                Divider()
-
-                Button("Merge PDFs...") {
-                    NotificationCenter.default.post(name: .pdfShowMerge, object: nil)
-                }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-
-                Divider()
-
-                Menu("Recent PDFs") {
-                    if recentFiles.recentURLs.isEmpty {
-                        Text("No Recent Files")
-                    } else {
-                        ForEach(recentFiles.recentURLs, id: \.self) { url in
-                            Button(url.lastPathComponent) {
-                                // Resolve the security-scoped bookmark so the
-                                // sandbox lets us read the file after relaunch.
-                                let resolved = recentFiles.beginAccess(url)
-                                NotificationCenter.default.post(name: .pdfOpenFile, object: nil, userInfo: ["url": resolved])
-                            }
-                        }
-                        Divider()
-                        Button("Clear Recent") {
-                            recentFiles.clear()
-                        }
-                    }
-                }
-
-                Divider()
-
-                Toggle("Reopen Last File on Launch", isOn: $reopenLastDocument)
-            }
-
-            // MARK: Edit Menu
-            CommandGroup(after: .pasteboard) {
-                Divider()
-
-                Button("Copy Selection") {
-                    NotificationCenter.default.post(name: .pdfCopy, object: nil)
-                }
-                .keyboardShortcut("c", modifiers: .command)
-                .disabled(focusedDocument == nil)
-            }
-
-            // MARK: Find Menu (Edit → Find ▸ Find…)
-            // Lives in its own CommandGroup so it surfaces in the Edit menu
-            // and registers Cmd+F as a real menu shortcut (the prior
-            // implementation relied on a hidden NSView keyDown override,
-            // which broke when the WKWebView/NSTextView grabbed focus).
-            CommandGroup(after: .textEditing) {
-                Button("Find…") {
-                    NotificationCenter.default.post(name: .pdfShowFind, object: nil)
-                }
-                .keyboardShortcut("f", modifiers: .command)
-
-                Button("Find Next") {
-                    NotificationCenter.default.post(name: .pdfFindNext, object: nil)
-                }
-                .keyboardShortcut("g", modifiers: .command)
-
-                Button("Find Previous") {
-                    NotificationCenter.default.post(name: .pdfFindPrev, object: nil)
-                }
-                .keyboardShortcut("g", modifiers: [.command, .shift])
-            }
-
-            // MARK: Print
-            CommandGroup(replacing: .printItem) {
-                Button("Print...") {
-                    // ContentView routes this to the active viewer (PDF,
-                    // markdown, text, or HTML); key scene only.
-                    NotificationCenter.default.post(name: .pdfPrint, object: nil)
-                }
-                .keyboardShortcut("p", modifiers: .command)
-            }
-
-            // MARK: Window Menu
-            CommandGroup(after: .windowArrangement) {
-                Button("Put Background Windows to Sleep") {
-                    NotificationCenter.default.post(name: .sleepBackgroundWindows, object: nil)
-                }
-            }
-
-            // MARK: Tools Menu
-            CommandMenu("Tools") {
-                Button("Toggle Bookmark") {
-                    NotificationCenter.default.post(name: .pdfToggleBookmark, object: nil)
-                }
-                .keyboardShortcut("d", modifiers: .command)
-                .disabled(focusedDocument == nil)
-
-                Button("Extract Pages...") {
-                    NotificationCenter.default.post(name: .pdfExtractPages, object: nil)
-                }
-                .disabled(focusedDocument == nil)
-
-                Button("Rebuild Text Layer (OCR)...") {
-                    NotificationCenter.default.post(name: .pdfRebuildTextLayer, object: nil)
-                }
-                .disabled(focusedDocument == nil)
-
-                Button("Make Searchable (OCR)") {
-                    NotificationCenter.default.post(name: .pdfMakeSearchable, object: nil)
-                }
-                .disabled(focusedDocument == nil)
-
-                Divider()
-
-                Button("Notepad") {
-                    openWindow(id: "notepad")
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button("Clear Rendered Temp Files") {
-                    TempFolderManager.clearAll()
-                }
-            }
-
-            // MARK: View Menu
-            CommandGroup(after: .toolbar) {
-                Divider()
-
-                // Cmd+G belongs to Find Next per macOS convention, so Go to
-                // Page gets Preview's shortcut, Cmd+Option+G.
-                Button("Go to Page...") {
-                    NotificationCenter.default.post(name: .pdfGoToPage, object: nil)
-                }
-                .keyboardShortcut("g", modifiers: [.command, .option])
-                .disabled(focusedDocument == nil)
-
-                Divider()
-
-                Button("Zoom In") {
-                    NotificationCenter.default.post(name: .pdfZoomIn, object: nil)
-                }
-                .keyboardShortcut("+", modifiers: .command)
-                .disabled(focusedDocument == nil)
-
-                Button("Zoom Out") {
-                    NotificationCenter.default.post(name: .pdfZoomOut, object: nil)
-                }
-                .keyboardShortcut("-", modifiers: .command)
-                .disabled(focusedDocument == nil)
-
-                Button("Zoom to Fit") {
-                    NotificationCenter.default.post(name: .pdfZoomFit, object: nil)
-                }
-                .keyboardShortcut("0", modifiers: .command)
-                .disabled(focusedDocument == nil)
-
-                Divider()
-
-                Button(isDarkMode == true ? "Light Reading Mode" : "Dark Reading Mode") {
-                    NotificationCenter.default.post(name: .pdfToggleDarkMode, object: nil)
-                }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
-                .disabled(focusedDocument == nil)
-
-                Divider()
-
-                Menu("Display Mode") {
-                    Button("Continuous Scroll") {
-                        setDisplayMode(.singlePageContinuous)
-                    }
-                    Button("Single Page") {
-                        setDisplayMode(.singlePage)
-                    }
-                    Button("Two Pages") {
-                        setDisplayMode(.twoUp)
-                    }
-                    Button("Two Pages Scroll") {
-                        setDisplayMode(.twoUpContinuous)
-                    }
-                }
-                .disabled(focusedDocument == nil)
-
-                Divider()
-
-                // Rotate moved off Preview's Cmd+R / Cmd+L so Cmd+L can be
-                // Full Screen, matching Acrobat (Michael's call, Aug 13).
-                Button("Rotate Right") {
-                    NotificationCenter.default.post(name: .pdfRotateRight, object: nil)
-                }
-                .keyboardShortcut("r", modifiers: [.command, .option])
-                .disabled(focusedDocument == nil)
-
-                Button("Rotate Left") {
-                    NotificationCenter.default.post(name: .pdfRotateLeft, object: nil)
-                }
-                .keyboardShortcut("l", modifiers: [.command, .option])
-                .disabled(focusedDocument == nil)
-
-                Divider()
-
-                Button("Split View") {
-                    NotificationCenter.default.post(name: .pdfToggleSplitView, object: nil)
-                }
-                .keyboardShortcut("2", modifiers: [.command, .option])
-                .disabled(focusedDocument == nil)
-
-                // Cmd+L matches Adobe Acrobat's Full Screen Mode shortcut.
-                Button("Full Screen Presentation") {
-                    NotificationCenter.default.post(name: .pdfStartPresentation, object: nil)
-                }
-                .keyboardShortcut("l", modifiers: .command)
-                .disabled(focusedDocument == nil)
-            }
-        }
+        .commands { AppCommands() }
 
         Window("Notepad", id: "notepad") {
             NotepadView()
@@ -376,6 +108,287 @@ struct MikePDFViewerApp: App {
 
         Settings {
             AppSettingsView()
+        }
+    }
+}
+
+// MARK: - Menus
+
+/// Every menu command, with the state the menus need.  Kept out of the App
+/// struct so that focus changes and Recent Files updates refresh the menus
+/// only, not every open window.
+struct AppCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var recentFiles = RecentFilesManager.shared
+    @AppStorage("reopenLastDocument") private var reopenLastDocument = true
+    @FocusedValue(\.pdfDocument) var focusedDocument
+    @FocusedValue(\.pdfFileURL) var focusedURL
+    @FocusedValue(\.isDarkMode) var isDarkMode
+    @FocusedValue(\.displayModeRawValue) var displayModeRaw
+
+    var body: some Commands {
+        // MARK: File Menu
+        CommandGroup(replacing: .newItem) {
+            Button("Open File...") {
+                openPDF()
+            }
+            .keyboardShortcut("o", modifiers: .command)
+
+            Divider()
+
+            Button("Save") {
+                saveDocument()
+            }
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(focusedDocument == nil)
+
+            Button("Save As...") {
+                saveDocumentAs()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(focusedDocument == nil)
+
+            // Works in every viewer mode (PDF, Markdown, text, Word), so it
+            // is not gated on focusedDocument; ContentView checks canExport.
+            Menu("Export") {
+                ForEach([ExportFormat.pdf, .docx, .png], id: \.self) { format in
+                    Button(format.menuTitle) {
+                        NotificationCenter.default.post(name: .pdfExport, object: nil,
+                                                        userInfo: ["format": format.rawValue])
+                    }
+                }
+            }
+
+            Divider()
+
+            Menu("Open With") {
+                if let url = focusedURL {
+                    let kind = OpenWithFileKind.detect(url: url)
+                    let apps = OpenWithHelpers.curatedApps(for: kind)
+                    ForEach(apps, id: \.self) { app in
+                        Button(OpenWithHelpers.displayName(for: app)) {
+                            OpenWithHelpers.openIn(app: app, file: url)
+                        }
+                    }
+                    if !apps.isEmpty {
+                        Divider()
+                    }
+                    Button("Other…") {
+                        OpenWithHelpers.showOtherPicker(file: url)
+                    }
+                } else {
+                    Text("No file open")
+                }
+            }
+
+            Divider()
+
+            Button("Merge PDFs...") {
+                NotificationCenter.default.post(name: .pdfShowMerge, object: nil)
+            }
+            .keyboardShortcut("m", modifiers: [.command, .shift])
+
+            Divider()
+
+            Menu("Recent PDFs") {
+                if recentFiles.recentURLs.isEmpty {
+                    Text("No Recent Files")
+                } else {
+                    ForEach(recentFiles.recentURLs, id: \.self) { url in
+                        Button(url.lastPathComponent) {
+                            // Resolve the security-scoped bookmark so the
+                            // sandbox lets us read the file after relaunch.
+                            let resolved = recentFiles.beginAccess(url)
+                            NotificationCenter.default.post(name: .pdfOpenFile, object: nil, userInfo: ["url": resolved])
+                        }
+                    }
+                    Divider()
+                    Button("Clear Recent") {
+                        recentFiles.clear()
+                    }
+                }
+            }
+
+            Divider()
+
+            Toggle("Reopen Last File on Launch", isOn: $reopenLastDocument)
+        }
+
+        // MARK: Edit Menu
+        CommandGroup(after: .pasteboard) {
+            Divider()
+
+            Button("Copy Selection") {
+                NotificationCenter.default.post(name: .pdfCopy, object: nil)
+            }
+            .keyboardShortcut("c", modifiers: .command)
+            .disabled(focusedDocument == nil)
+        }
+
+        // MARK: Find Menu (Edit → Find ▸ Find…)
+        // Lives in its own CommandGroup so it surfaces in the Edit menu
+        // and registers Cmd+F as a real menu shortcut (the prior
+        // implementation relied on a hidden NSView keyDown override,
+        // which broke when the WKWebView/NSTextView grabbed focus).
+        CommandGroup(after: .textEditing) {
+            Button("Find…") {
+                NotificationCenter.default.post(name: .pdfShowFind, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
+            Button("Find Next") {
+                NotificationCenter.default.post(name: .pdfFindNext, object: nil)
+            }
+            .keyboardShortcut("g", modifiers: .command)
+
+            Button("Find Previous") {
+                NotificationCenter.default.post(name: .pdfFindPrev, object: nil)
+            }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+        }
+
+        // MARK: Print
+        CommandGroup(replacing: .printItem) {
+            Button("Print...") {
+                // ContentView routes this to the active viewer (PDF,
+                // markdown, text, or HTML); key scene only.
+                NotificationCenter.default.post(name: .pdfPrint, object: nil)
+            }
+            .keyboardShortcut("p", modifiers: .command)
+        }
+
+        // MARK: Window Menu
+        CommandGroup(after: .windowArrangement) {
+            Button("Put Background Windows to Sleep") {
+                NotificationCenter.default.post(name: .sleepBackgroundWindows, object: nil)
+            }
+        }
+
+        // MARK: Tools Menu
+        CommandMenu("Tools") {
+            Button("Toggle Bookmark") {
+                NotificationCenter.default.post(name: .pdfToggleBookmark, object: nil)
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(focusedDocument == nil)
+
+            Button("Extract Pages...") {
+                NotificationCenter.default.post(name: .pdfExtractPages, object: nil)
+            }
+            .disabled(focusedDocument == nil)
+
+            Button("Rebuild Text Layer (OCR)...") {
+                NotificationCenter.default.post(name: .pdfRebuildTextLayer, object: nil)
+            }
+            .disabled(focusedDocument == nil)
+
+            Button("Make Searchable (OCR)") {
+                NotificationCenter.default.post(name: .pdfMakeSearchable, object: nil)
+            }
+            .disabled(focusedDocument == nil)
+
+            Divider()
+
+            Button("Notepad") {
+                openWindow(id: "notepad")
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Clear Rendered Temp Files") {
+                TempFolderManager.clearAll()
+            }
+        }
+
+        // MARK: View Menu
+        CommandGroup(after: .toolbar) {
+            Divider()
+
+            // Cmd+G belongs to Find Next per macOS convention, so Go to
+            // Page gets Preview's shortcut, Cmd+Option+G.
+            Button("Go to Page...") {
+                NotificationCenter.default.post(name: .pdfGoToPage, object: nil)
+            }
+            .keyboardShortcut("g", modifiers: [.command, .option])
+            .disabled(focusedDocument == nil)
+
+            Divider()
+
+            Button("Zoom In") {
+                NotificationCenter.default.post(name: .pdfZoomIn, object: nil)
+            }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(focusedDocument == nil)
+
+            Button("Zoom Out") {
+                NotificationCenter.default.post(name: .pdfZoomOut, object: nil)
+            }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(focusedDocument == nil)
+
+            Button("Zoom to Fit") {
+                NotificationCenter.default.post(name: .pdfZoomFit, object: nil)
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(focusedDocument == nil)
+
+            Divider()
+
+            Button(isDarkMode == true ? "Light Reading Mode" : "Dark Reading Mode") {
+                NotificationCenter.default.post(name: .pdfToggleDarkMode, object: nil)
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(focusedDocument == nil)
+
+            Divider()
+
+            Menu("Display Mode") {
+                Button("Continuous Scroll") {
+                    setDisplayMode(.singlePageContinuous)
+                }
+                Button("Single Page") {
+                    setDisplayMode(.singlePage)
+                }
+                Button("Two Pages") {
+                    setDisplayMode(.twoUp)
+                }
+                Button("Two Pages Scroll") {
+                    setDisplayMode(.twoUpContinuous)
+                }
+            }
+            .disabled(focusedDocument == nil)
+
+            Divider()
+
+            // Rotate moved off Preview's Cmd+R / Cmd+L so Cmd+L can be
+            // Full Screen, matching Acrobat (Michael's call, Aug 13).
+            Button("Rotate Right") {
+                NotificationCenter.default.post(name: .pdfRotateRight, object: nil)
+            }
+            .keyboardShortcut("r", modifiers: [.command, .option])
+            .disabled(focusedDocument == nil)
+
+            Button("Rotate Left") {
+                NotificationCenter.default.post(name: .pdfRotateLeft, object: nil)
+            }
+            .keyboardShortcut("l", modifiers: [.command, .option])
+            .disabled(focusedDocument == nil)
+
+            Divider()
+
+            Button("Split View") {
+                NotificationCenter.default.post(name: .pdfToggleSplitView, object: nil)
+            }
+            .keyboardShortcut("2", modifiers: [.command, .option])
+            .disabled(focusedDocument == nil)
+
+            // Cmd+L matches Adobe Acrobat's Full Screen Mode shortcut.
+            Button("Full Screen Presentation") {
+                NotificationCenter.default.post(name: .pdfStartPresentation, object: nil)
+            }
+            .keyboardShortcut("l", modifiers: .command)
+            .disabled(focusedDocument == nil)
         }
     }
 

@@ -19,7 +19,9 @@ final class DocumentPageState {
 
 struct ContentView: View {
     @State var pdfURL: URL?
-    @EnvironmentObject var recentFiles: RecentFilesManager
+    /// Read, never observed: observing it made every window rebuild on
+    /// every open.  Only RecentFilesShortList below observes it.
+    private var recentFiles: RecentFilesManager { RecentFilesManager.shared }
     /// Only the key window should react to app-wide menu notifications
     /// (Open, zoom, find, etc.). Without this, every open window loads the
     /// same file and shares edits - the multi-window stale-artifact bug.
@@ -1542,18 +1544,9 @@ struct ContentView: View {
             Button("Open PDF") { openPDF() }
                 .buttonStyle(.borderedProminent)
 
-            if !recentFiles.recentURLs.isEmpty {
-                Divider().frame(width: 200)
-                Text("Recent Files")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                ForEach(recentFiles.recentURLs.prefix(5), id: \.self) { url in
-                    Button(url.lastPathComponent) {
-                        recentFiles.add(url)
-                        pdfURL = url
-                    }
-                    .buttonStyle(.link)
-                }
+            RecentFilesShortList { url in
+                recentFiles.add(url)
+                pdfURL = url
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2614,11 +2607,19 @@ struct ContentView: View {
     }
 
     private func loadPDFDocument(from url: URL, generation: UInt64) {
+        let started = Date()
         DispatchQueue.global(qos: .userInitiated).async {
             let doc = PDFDocument(url: url)
             let isLocked = doc?.isLocked ?? false
             let fields = isLocked ? 0 : Self.countFormFields(doc)
+            let readDone = Date()
             DispatchQueue.main.async {
+                // Split the open into reading the file (background) and waiting
+                // for the main thread, which is where many open windows cost.
+                let readMS = Int(readDone.timeIntervalSince(started) * 1000)
+                let waitMS = Int(Date().timeIntervalSince(readDone) * 1000)
+                let windows = OpenDocumentRegistry.shared.liveWindowCount
+                AppLog.write("PERF pdf split: read \(readMS) ms, waited for main thread \(waitMS) ms, \(windows) windows (\(url.lastPathComponent))")
                 guard acceptLoadIfCurrent(generation: generation, url: url) else { return }
                 pdfDocument = doc
                 pageState.totalPages = isLocked ? 0 : (doc?.pageCount ?? 0)
@@ -2867,6 +2868,28 @@ private struct TextFontChangeListener: ViewModifier {
     }
 }
 
+// MARK: - Recent files on the empty screen
+
+/// The only view in a window that observes Recent Files, so a new entry
+/// refreshes this short list and nothing else.
+private struct RecentFilesShortList: View {
+    @ObservedObject private var recentFiles = RecentFilesManager.shared
+    let onOpen: (URL) -> Void
+
+    var body: some View {
+        if !recentFiles.recentURLs.isEmpty {
+            Divider().frame(width: 200)
+            Text("Recent Files")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            ForEach(recentFiles.recentURLs.prefix(5), id: \.self) { url in
+                Button(url.lastPathComponent) { onOpen(url) }
+                    .buttonStyle(.link)
+            }
+        }
+    }
+}
+
 // MARK: - Permission Needed alert
 
 /// Separate modifier so the giant body chain stays type-checkable.
@@ -3021,5 +3044,4 @@ extension View {
 
 #Preview {
     ContentView()
-        .environmentObject(RecentFilesManager())
 }
