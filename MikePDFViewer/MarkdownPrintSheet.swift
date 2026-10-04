@@ -89,7 +89,7 @@ struct MarkdownPrintSheet: View {
         ZStack {
             if let preview {
                 PrintPreviewPDFView(document: preview)
-                    .id(ObjectIdentifier(preview))
+                    .id(DocumentToken.token(for: preview))
             }
             if isRendering {
                 VStack(spacing: 8) {

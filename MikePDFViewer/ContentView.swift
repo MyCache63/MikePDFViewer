@@ -662,7 +662,7 @@ struct ContentView: View {
             )
             // Force a full sidebar identity reset when the PDFDocument instance
             // changes so SwiftUI does not reuse page-row @State (old thumbnails).
-            .id(ObjectIdentifier(document))
+            .id(DocumentToken.token(for: document))
         } else if isViewingMarkdown {
             if markdownMode == .reader && mdTOCVisible {
                 MarkdownTOCSidebar(
@@ -906,7 +906,7 @@ struct ContentView: View {
                     darkMode: darkModeReading,
                     displayMode: displayMode
                 )
-                .id(ObjectIdentifier(document))
+                .id(DocumentToken.token(for: document))
             } else if isLoadingDocument {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -1357,7 +1357,7 @@ struct ContentView: View {
         makeSearchableProgress = 0
         let cancelFlag = SearchableOCRService.CancelFlag()
         makeSearchableCancelFlag = cancelFlag
-        let sourceID = ObjectIdentifier(document)
+        let sourceID = DocumentToken.token(for: document)
         let generationAtStart = loadGeneration
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -1371,7 +1371,7 @@ struct ContentView: View {
                     // User opened another file while OCR ran - drop the result.
                     guard generationAtStart == loadGeneration,
                           let current = pdfDocument,
-                          ObjectIdentifier(current) == sourceID else { return }
+                          DocumentToken.token(for: current) == sourceID else { return }
                     guard let newDoc = PDFDocument(data: result.data) else {
                         makeSearchableMessage = "OCR finished but the rebuilt PDF could not be loaded. The original document is unchanged."
                         return

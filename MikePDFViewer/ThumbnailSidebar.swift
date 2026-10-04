@@ -92,7 +92,7 @@ struct ThumbnailSidebar: View {
             .onChange(of: documentVersion) { _, _ in prewarmThumbnails() }
             // New PDFDocument instance = wipe row @State (selected pages,
             // scroll position helpers) so the previous file cannot leak.
-            .onChange(of: ObjectIdentifier(document)) { _, _ in
+            .onChange(of: DocumentToken.token(for: document)) { _, _ in
                 selectedPages.removeAll()
                 draggedPage = nil
                 lastPrewarmKey = ""
@@ -174,7 +174,7 @@ struct ThumbnailSidebar: View {
     /// document opens, so the sidebar appears sharp immediately instead of
     /// showing a placeholder per row while scrolling.
     private func prewarmThumbnails() {
-        let key = "\(ObjectIdentifier(document))-\(documentVersion)"
+        let key = "\(DocumentToken.token(for: document))-\(documentVersion)"
         guard key != lastPrewarmKey else { return }
         lastPrewarmKey = key
 
@@ -302,9 +302,11 @@ enum ThumbnailRenderer {
     }
 
     static func cacheKey(document: PDFDocument, pageIndex: Int, version: Int, pixelWidth: CGFloat) -> NSString {
-        // ObjectIdentifier's description is unique per instance; hashValue alone
+        // DocumentToken, never ObjectIdentifier: an address is reused once a
+        // document is released, which showed one file's pages beside another.
+        // (Earlier note follows.) ObjectIdentifier's description is unique per instance; hashValue alone
         // can collide and serve a prior document's bitmap under the same key.
-        "\(ObjectIdentifier(document))-\(pageIndex)-\(version)-\(Int(pixelWidth))" as NSString
+        "\(DocumentToken.token(for: document))-\(pageIndex)-\(version)-\(Int(pixelWidth))" as NSString
     }
 
     static func clearCache() {
@@ -353,7 +355,7 @@ struct ThumbnailItem: View {
     /// background renders can discard stale results.
     @State private var renderEpoch: UInt64 = 0
 
-    private var documentIdentity: ObjectIdentifier { ObjectIdentifier(document) }
+    private var documentIdentity: Int { DocumentToken.token(for: document) }
 
     private var borderColor: Color {
         if isSelected { return .accentColor }

@@ -1,5 +1,17 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.26.3 - Thumbnails no longer show another document's pages
+
+**BUILD:** v6.26.3 Release + kit both succeed; installed. **Safety tag:** `before-thumbnail-identity-2026-10-04`
+
+### Oct 4 - v6.26.3 Sidebar showed the wrong file's pages
+
+Michael had DessertLabels_v03 open while the sidebar showed his wedding ceremony script, with page selection still tracking correctly. Cause: the thumbnail cache key, the prewarm key, the sidebar's reset trigger and several `.id()`s used `ObjectIdentifier(document)`, which is just the memory address. A released PDFDocument's address is reused by the next one 49 times in 50 (measured), so the new file inherited the old file's cached thumbnails. Window sleep (v6.26.0) releases documents far more often, which made it common.
+
+Fix: new `DocumentToken.swift` (kit-safe, not excluded) stores a never-reused Int on each PDFDocument via an associated object, lock-protected because thumbnails render off the main thread. Every document identity now uses it: thumbnail cache key, prewarm key, sidebar reset, `documentIdentity`, both `.id()`s in ContentView, the OCR result guard, and the markdown print preview. Verified: same 50-try test, address reused 49/50, token reused 0/50. **Rule for the future: never use ObjectIdentifier to identify a document that can be released.**
+
+---
+
 ## Current State: v6.26.2 - Web browser default restored to Edge; web links refused cleanly
 
 **BUILD:** v6.26.2 Release, installed. **Safety tag:** `before-browser-fix-2026-09-29`
