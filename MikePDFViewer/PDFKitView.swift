@@ -49,8 +49,6 @@ extension Notification.Name {
 class PrintablePDFView: PDFView {
     // Static reference for direct access from SwiftUI
     static weak var current: PrintablePDFView?
-    // Cmd+P event monitor
-    private static var printMonitor: Any?
 
     // Annotation editing state
     private(set) var activeAnnotation: PDFAnnotation?
@@ -120,17 +118,13 @@ class PrintablePDFView: PDFView {
         return nil
     }
 
-    /// Install a Cmd+P event monitor at the app level
-    static func installPrintMonitor() {
-        guard printMonitor == nil else { return }
-        printMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if mods == .command, event.charactersIgnoringModifiers == "p" {
-                triggerPrint()
-                return nil // consume the event
-            }
-            return event
-        }
+    /// The PDF view inside a given window.  Use this instead of `current`
+    /// when acting for a particular window: `current` is app-wide and can
+    /// point at a different document.  (Removed 6 Oct 2026: a Cmd+P keystroke
+    /// hook that printed `current`, which printed the wrong file.  Cmd+P now
+    /// goes through File > Print like every other command.)
+    static func inWindow(_ window: NSWindow?) -> PrintablePDFView? {
+        findPDFView(in: window?.contentView)
     }
 
     // MARK: - Undo
@@ -520,7 +514,6 @@ struct PDFKitView: NSViewRepresentable {
         if pdfView.window?.isKeyWindow == true || PrintablePDFView.current == nil {
             PrintablePDFView.current = pdfView
         }
-        PrintablePDFView.installPrintMonitor()
         return pdfView
     }
 
@@ -581,6 +574,16 @@ struct PDFKitView: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleStrikethrough), name: .pdfApplyStrikethrough, object: nil)
             nc.addObserver(self, selector: #selector(handleApplySignature), name: .pdfApplySignature, object: nil)
             nc.addObserver(self, selector: #selector(handleRedactSelection), name: .pdfRedactSelection, object: nil)
+            // Windows no longer redraw on every switch (v6.27.0), so `current`
+            // has to follow the key window explicitly.
+            nc.addObserver(self, selector: #selector(windowBecameKey(_:)),
+                           name: NSWindow.didBecomeKeyNotification, object: nil)
+        }
+
+        @objc func windowBecameKey(_ notification: Notification) {
+            guard let pdfView, let window = notification.object as? NSWindow,
+                  pdfView.window === window else { return }
+            PrintablePDFView.current = pdfView
         }
 
         deinit {

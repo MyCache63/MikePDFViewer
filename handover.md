@@ -1,5 +1,17 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.27.1 - Cmd+P prints the front window's document
+
+**BUILD:** v6.27.1 Release + kit both succeed; installed. **Safety tag:** `before-print-target-fix-2026-10-06`
+
+### Oct 6 - v6.27.1 Cmd+P printed a different document
+
+Cmd+P showed the print dialog for another file; File > Print was better. Cause: `PrintablePDFView.installPrintMonitor()` added an `NSEvent` keyDown monitor that swallowed Cmd+P before the menu and printed the app-wide `PrintablePDFView.current`. `current` was refreshed only in `updateNSView` while key, and since v6.27.0 windows no longer redraw on every switch, so it went stale. It also fired in markdown/text windows. File > Print went through `.pdfPrint` -> `handlePrint`, which also used `current` (correct more often by luck).
+
+Fix: monitor removed (the AppCommands Print item already owns Cmd+P; verified in the test copy via AX: "Print...", cmd char P, modifiers 0). New `PrintablePDFView.inWindow(_:)` and ContentView `windowPDFView` (this window's view, falling back to `current`); all 8 ContentView uses of `current` (print, sticky note, free text, annotation edit/finalize/cancel/font/color) now target their own window. Coordinator observes `NSWindow.didBecomeKeyNotification` so `current` follows the key window for the remaining app-wide uses. Not tested with a real print dialog (would put a dialog on Michael's screen).
+
+---
+
 ## Current State: v6.27.0 - Opens no longer slow down with many windows
 
 **BUILD:** v6.27.0 Release + kit both succeed; installed. **Safety tag:** `before-open-speed-many-windows-2026-10-04`

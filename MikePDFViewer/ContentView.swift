@@ -891,8 +891,8 @@ struct ContentView: View {
                 onHighlight: { applyMarkup(.pdfApplyHighlight) },
                 onUnderline: { applyMarkup(.pdfApplyUnderline) },
                 onStrikethrough: { applyMarkup(.pdfApplyStrikethrough) },
-                onAddNote: { PrintablePDFView.current?.placeStickyNote(color: NSColor(annotationColor)) },
-                onAddText: { PrintablePDFView.current?.placeFreeText() },
+                onAddNote: { windowPDFView?.placeStickyNote(color: NSColor(annotationColor)) },
+                onAddText: { windowPDFView?.placeFreeText() },
                 onDone: { showAnnotationBar = false }
             )
         }
@@ -1427,7 +1427,7 @@ struct ContentView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(minWidth: 150, maxWidth: 250)
                         .onChange(of: editingAnnotationText) { _, newText in
-                            PrintablePDFView.current?.updateActiveAnnotationText(newText)
+                            windowPDFView?.updateActiveAnnotationText(newText)
                         }
                 } else {
                     Image(systemName: "signature")
@@ -1440,13 +1440,13 @@ struct ContentView: View {
                 Spacer()
 
                 Button("Done") {
-                    PrintablePDFView.current?.finalizeAnnotation()
+                    windowPDFView?.finalizeAnnotation()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
 
                 Button("Delete") {
-                    PrintablePDFView.current?.cancelAnnotation()
+                    windowPDFView?.cancelAnnotation()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -1498,7 +1498,7 @@ struct ContentView: View {
                         .labelsHidden()
                         .frame(width: 24)
                         .onChange(of: annotationColor) { _, newColor in
-                            PrintablePDFView.current?.updateActiveAnnotationFontColor(NSColor(newColor))
+                            windowPDFView?.updateActiveAnnotationFontColor(NSColor(newColor))
                         }
                 }
             }
@@ -1519,7 +1519,7 @@ struct ContentView: View {
         var font = NSFont(name: editingFontName, size: editingFontSize)
             ?? NSFont.systemFont(ofSize: editingFontSize)
         font = fm.convert(font, toHaveTrait: traits)
-        PrintablePDFView.current?.updateActiveAnnotationFont(font)
+        windowPDFView?.updateActiveAnnotationFont(font)
     }
 
     // MARK: - Empty State
@@ -1857,6 +1857,13 @@ struct ContentView: View {
         isViewingCSV = false
         originalCSVURL = nil
         csvDocument = nil
+    }
+
+    /// This window's PDF view.  Print and the markup tools must act on the
+    /// window they were invoked from; the app-wide `current` can name another
+    /// window's document.
+    private var windowPDFView: PrintablePDFView? {
+        PrintablePDFView.inWindow(hostWindow) ?? PrintablePDFView.current
     }
 
     /// One exit point for every loader, so each open is timed once.
@@ -2393,7 +2400,7 @@ struct ContentView: View {
     /// Route Cmd+P / toolbar print to whichever viewer is active.
     private func handlePrint() {
         if pdfDocument != nil {
-            PrintablePDFView.current?.performPrint()
+            windowPDFView?.performPrint()
         } else if isViewingMarkdown {
             printMarkdownDocument()
         } else if isViewingText {
