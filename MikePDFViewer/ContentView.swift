@@ -550,9 +550,18 @@ struct ContentView: View {
             // No other window has it, or the one that claimed it is gone.
             return false
         }
-        if existing.isMiniaturized { existing.deminiaturize(nil) }
-        existing.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Raise it now AND again a moment later.  SwiftUI delivered this open to
+        // a different window and brings that window forward after we return, which
+        // left the file you asked for behind it, so Cmd+P printed the wrong one
+        // (found by the v6.27.2 print tests, 7 Oct 2026).
+        let raise = {
+            if existing.isMiniaturized { existing.deminiaturize(nil) }
+            NSApp.activate(ignoringOtherApps: true)
+            existing.makeKeyAndOrderFront(nil)
+        }
+        raise()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { raise() }
+        AppLog.write("open: \(url.lastPathComponent) is already open, raised its window")
         return true
     }
 

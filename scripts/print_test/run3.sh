@@ -7,6 +7,10 @@ for n in Bravo Delta Alpha Echo Charlie Bravo; do
   open -a "$APP" $S/pdfs/Test_$n.pdf; sleep 2.5
 osascript <<OSA
 tell application "System Events" to tell process "$P"
+  set frontmost to true
+  delay 0.5
+  keystroke "p" using command down
+  delay 0.4
   keystroke "p" using command down
   delay 3
   set out to ""

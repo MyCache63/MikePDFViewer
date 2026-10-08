@@ -1,8 +1,8 @@
 # MikePDFViewer Handover - August 13, 2026
 
-## Current State: v6.27.2 - Cmd+P answered by one window only
+## Current State: v6.27.3 - Cmd+P answered by one window only, and reopening a file brings it forward
 
-**BUILD:** v6.27.2 Release + kit both succeed; installed; Developer ID signed. **Safety tag:** `before-print-keyscene-2026-10-07`
+**BUILD:** v6.27.3 Release + kit both succeed; installed; Developer ID signed. **Safety tag:** `before-print-keyscene-2026-10-07`
 
 ### Oct 7 - v6.27.2 Cmd+P still opened print dialogs for other documents
 
@@ -24,7 +24,16 @@ Tests: `scripts/print_test/run.sh|run2.sh|run3.sh <Old|New>` drive a renamed tes
 through System Events and count print sheets per window. The OLD build passed run.sh (4 windows x 2
 rounds) and run2.sh (8 windows, background windows slept), so those do not reproduce the stale
 state; the bug needs windows that went a long time without redrawing. run3 was interrupted by
-the screen locking. The fix was not yet click-tested on the New copy at the time of writing.
+the screen locking.
+
+v6.27.3: run3 (open a file that is already open, then Cmd+P twice) found a second bug. SwiftUI
+delivers the open to some other window (often the empty start window) and brings THAT window
+forward after `raiseWindowAlreadyShowing` returns, so the file you asked for stayed behind and Cmd+P
+went to the wrong window. Fix: raise the existing window now and again 0.15 s later.
+
+Click-test results on the fixed copy (dialogs cancelled, nothing printed), 7 Oct evening:
+run.sh 8/8, run2.sh 7/7, run3.sh 6/6 (each with Cmd+P pressed twice: one dialog every time),
+all on the right window. On the OLD build run3 put no dialog on the right window 6 of 6 times.
 
 ---
 
