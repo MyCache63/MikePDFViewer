@@ -1,5 +1,33 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.27.2 - Cmd+P answered by one window only
+
+**BUILD:** v6.27.2 Release + kit both succeed; installed; Developer ID signed. **Safety tag:** `before-print-keyscene-2026-10-07`
+
+### Oct 7 - v6.27.2 Cmd+P still opened print dialogs for other documents
+
+Michael: "cmd p pulls up a print window for several random recent pdfs but not necessarily the one
+that I was looking at." Live evidence (AX, read only): the main window was PhotoTableTent_v06 while
+the print sheet sat on TableIndex_v05. Cause: every window guards menu broadcasts with `isKeyScene`,
+which read SwiftUI's `controlActiveState`. A window only re-reads that when its body redraws, and
+since v6.27.0 background windows rarely redraw, so stale windows still read `.key` (and the real
+front window could read not-key). Every menu command guarded this way was affected.
+
+Fix, three layers: (1) `isKeyScene` asks AppKit: `hostWindow === (NSApp.mainWindow ?? NSApp.keyWindow)`.
+(2) File > Print posts `.pdfPrint` with `object:` the main window; only that window acts.
+(3) `handlePrint` ignores a second request while a sheet or print job is open, and prints only
+this window's own `PrintablePDFView.inWindow(hostWindow)` (the app-wide `current` fallback is gone).
+Every print now logs `print: ...` lines to mikepdfviewer.log (target window and file).
+
+Tests: `scripts/print_test/run.sh|run2.sh|run3.sh <Old|New>` drive a renamed test copy
+(bundle `com.mikeashe.MikePDFViewer.printtest<V>`, built with -derivedDataPath to a scratch dir)
+through System Events and count print sheets per window. The OLD build passed run.sh (4 windows x 2
+rounds) and run2.sh (8 windows, background windows slept), so those do not reproduce the stale
+state; the bug needs windows that went a long time without redrawing. run3 was interrupted by
+the screen locking. The fix was not yet click-tested on the New copy at the time of writing.
+
+---
+
 ## Current State: v6.27.1 - Cmd+P prints the front window's document
 
 **BUILD:** v6.27.1 Release + kit both succeed; installed. **Safety tag:** `before-print-target-fix-2026-10-06`

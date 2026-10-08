@@ -252,7 +252,12 @@ struct AppCommands: Commands {
             Button("Print...") {
                 // ContentView routes this to the active viewer (PDF,
                 // markdown, text, or HTML); key scene only.
-                NotificationCenter.default.post(name: .pdfPrint, object: nil)
+                // Addressed to ONE window: the main (document) window at the moment
+                // of the keystroke.  Every window hears the broadcast and only the one
+                // it names acts (v6.27.2, 7 Oct 2026).
+                let target = NSApp.mainWindow ?? NSApp.keyWindow
+                AppLog.write("print: menu/Cmd+P, target window \"\(target?.title ?? "none")\"")
+                NotificationCenter.default.post(name: .pdfPrint, object: target)
             }
             .keyboardShortcut("p", modifiers: .command)
         }

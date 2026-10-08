@@ -203,8 +203,17 @@ struct ContentView: View {
 
     /// True when this scene is the key window. Menu commands post globally;
     /// only the key scene should apply them.
+    /// Is this the window the user is working in?  Asks AppKit at the moment of the
+    /// command.  (v6.27.2, 7 Oct 2026: Michael, "cmd p pulls up a print window for several
+    /// random recent pdfs".  This used `controlActiveState`, a SwiftUI environment value that
+    /// a window only re-reads when its body redraws.  Since v6.27.0 background windows rarely
+    /// redraw, so windows that had been in front earlier still read `.key`, and every one of
+    /// them answered the menu's broadcast: one print dialog each.  The same guard protects
+    /// every menu command below, so they all had the bug.)  `mainWindow` stays the document
+    /// window even while a panel such as Find has the keyboard.
     private var isKeyScene: Bool {
-        controlActiveState == .key
+        guard let mine = hostWindow else { return false }
+        return mine === (NSApp.mainWindow ?? NSApp.keyWindow)
     }
 
     /// URL to use for "Open With" actions — always the user-facing source, not a
@@ -413,8 +422,14 @@ struct ContentView: View {
                 guard isKeyScene, pdfDocument != nil else { return }
                 showRebuildTextPrompt = true
             }
-            .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { _ in
-                guard isKeyScene else { return }
+            .onReceive(NotificationCenter.default.publisher(for: .pdfPrint)) { note in
+                // Only the window the menu named.  The old check (am I key?) could be
+                // stale in several windows at once, which opened several print dialogs.
+                if let target = note.object as? NSWindow {
+                    guard target === hostWindow else { return }
+                } else {
+                    guard isKeyScene else { return }
+                }
                 handlePrint()
             }
             .modifier(ZoomCommandsListener(
@@ -2399,8 +2414,21 @@ struct ContentView: View {
 
     /// Route Cmd+P / toolbar print to whichever viewer is active.
     private func handlePrint() {
+        // One print dialog at a time: a second Cmd+P while one is open does nothing.
+        if hostWindow?.attachedSheet != nil || NSPrintOperation.current != nil {
+            AppLog.write("print: ignored, a sheet or print job is already open in \"\(hostWindow?.title ?? "?")\"")
+            return
+        }
+        AppLog.write("print: \"\(hostWindow?.title ?? "?")\" prints \(lastLoadedURL?.lastPathComponent ?? "nothing loaded")")
         if pdfDocument != nil {
-            windowPDFView?.performPrint()
+            // This window's own page view, never the app-wide one: that fallback could
+            // print a different document.
+            if let view = PrintablePDFView.inWindow(hostWindow) {
+                view.performPrint()
+            } else {
+                AppLog.write("print: no page view found in \"\(hostWindow?.title ?? "?")\"")
+                errorAlertMessage = "Couldn't find this window's page to print. Click the page once, then press Cmd+P again."
+            }
         } else if isViewingMarkdown {
             printMarkdownDocument()
         } else if isViewingText {
