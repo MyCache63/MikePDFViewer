@@ -102,7 +102,11 @@ struct CSVDocument: Sendable {
             case "\r":
                 if index + 1 < characters.count && characters[index + 1] == "\n" { index += 1 }
                 endRecord()
-            case "\n":
+            case "\n", "\r\n":
+                // Swift treats a Windows line ending (return + newline) as ONE
+                // Character, which matches neither "\r" nor "\n" on its own.
+                // Without this case every CRLF file (Python's csv module, Excel)
+                // came out as a single giant header row (16 Oct 2026).
                 endRecord()
             default:
                 field.append(character)

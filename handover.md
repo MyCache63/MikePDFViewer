@@ -1,5 +1,15 @@
 # MikePDFViewer Handover - August 13, 2026
 
+## Current State: v6.27.4 - CSV files with Windows line endings display correctly
+
+**BUILD:** v6.27.4 Release + kit both succeed; installed. **Safety tag:** `before-csv-crlf-fix-2026-10-16`
+
+### Oct 16 - v6.27.4 CSV showed one giant header row and no data
+
+`familyfinder_log.csv` (written by Python's csv module, CRLF line endings) displayed with every value strung across the header and zero rows. Swift treats "\r\n" as a single Character, which matches neither `case "\r"` nor `case "\n"` in `CSVDocument.splitRecords`, so no record ever ended. My v6.20.0 test used LF only, which is why it passed. Fix: `case "\n", "\r\n":`. Headless tests: his file parses to 11 columns and 20 rows with the right header and first row, and LF, CRLF and CR files all split correctly with line breaks kept inside quoted fields. **Rule: any Swift text parser that walks Characters must handle "\r\n" as its own case.**
+
+---
+
 ## Current State: v6.27.3 - Cmd+P answered by one window only, and reopening a file brings it forward
 
 **BUILD:** v6.27.3 Release + kit both succeed; installed; Developer ID signed. **Safety tag:** `before-print-keyscene-2026-10-07`
