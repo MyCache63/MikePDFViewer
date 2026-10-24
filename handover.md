@@ -1,5 +1,8 @@
 # MikePDFViewer Handover - August 13, 2026
 
+
+**v6.27.5 (2026-10-24):** Images opened tiny (a 3444 px Retina screenshot showed as a postage stamp labelled 100%). Two causes in ImageDocumentView.swift: the view was sized in pixels while NSImageView draws in points (144 dpi = half size), and the fit used the clip view's magnified bounds and had no wait for a zero-size new window. Now sized in points, fit uses contentSize, waits for a real size, refits on window resize until the user zooms, and logs `image fit:` lines. Test copy: 1722pt image into 735pt at 0.427. [builds, installed, not device-tested]
+
 ## Current State: v6.27.4 - CSV files with Windows line endings display correctly
 
 **BUILD:** v6.27.4 Release + kit both succeed; installed. **Safety tag:** `before-csv-crlf-fix-2026-10-16`

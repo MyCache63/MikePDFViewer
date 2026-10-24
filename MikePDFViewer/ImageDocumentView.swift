@@ -24,6 +24,9 @@ final class ImageViewerController: ObservableObject {
     /// Magnification the image opened at, which the slider treats as 100%.
     private var openScale: CGFloat = 1
 
+    /// True until the person zooms, so a window resize keeps the image fitted.
+    private var followsWindow = true
+
     weak var scrollView: NSScrollView?
     weak var imageView: NSImageView?
 
@@ -78,23 +81,45 @@ final class ImageViewerController: ObservableObject {
 
     // MARK: Zoom
 
-    func zoomIn() { setMagnification(magnification * 1.25, centerOnImage: false) }
-    func zoomOut() { setMagnification(magnification / 1.25, centerOnImage: false) }
-    func actualSize() { setMagnification(1, centerOnImage: true) }
+    func zoomIn() { followsWindow = false; setMagnification(magnification * 1.25, centerOnImage: false) }
+    func zoomOut() { followsWindow = false; setMagnification(magnification / 1.25, centerOnImage: false) }
+    func actualSize() { followsWindow = false; setMagnification(1, centerOnImage: true) }
 
     /// Fills the window, enlarging a small image if that is what it takes.
     func fitToWindow() { setMagnification(fitScale(allowEnlarging: true), centerOnImage: true) }
 
     /// Used on first display: shrinks a big screenshot to fit, but leaves a
     /// small image at its own size instead of blowing it up.
-    func fitOnOpen() {
+    /// A new window has no size for a moment; fitting then gave a scale of 0,
+    /// clamped to 5%, so a big screenshot opened as a postage stamp (24 Oct
+    /// 2026). Wait for a real size instead.
+    func fitOnOpen(attempt: Int = 0) {
+        guard let scrollView, scrollView.contentSize.width > 1,
+              scrollView.contentSize.height > 1 else {
+            if attempt < 40 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.fitOnOpen(attempt: attempt + 1)
+                }
+            }
+            return
+        }
+        followsWindow = true
+        openScale = min(fitScale(allowEnlarging: false), 1)
+        setMagnification(openScale, centerOnImage: true)
+        AppLog.write("image fit: \(Int(imageView?.bounds.width ?? 0))pt wide into \(Int(scrollView.contentSize.width))pt at \(String(format: "%.3f", scrollView.magnification)) after \(attempt) waits")
+    }
+
+    /// Keeps an un-zoomed image fitted while the window is resized.
+    func windowResized() {
+        guard followsWindow, image != nil else { return }
         openScale = min(fitScale(allowEnlarging: false), 1)
         setMagnification(openScale, centerOnImage: true)
     }
 
     /// 1.0 restores the size the image opened at.
     func setRelativeZoom(_ value: Double) {
-        setMagnification(openScale * CGFloat(value), centerOnImage: false)
+        followsWindow = abs(value - 1) < 0.001
+        setMagnification(openScale * CGFloat(value), centerOnImage: followsWindow)
     }
 
     private var magnification: CGFloat { scrollView?.magnification ?? 1 }
@@ -102,7 +127,9 @@ final class ImageViewerController: ObservableObject {
     private func fitScale(allowEnlarging: Bool) -> CGFloat {
         guard let scrollView, let imageView,
               imageView.bounds.width > 0, imageView.bounds.height > 0 else { return 1 }
-        let clip = scrollView.contentView.bounds.size
+        // contentSize is in window points; the clip view's bounds shrink or
+        // grow with the current magnification, which skewed every refit.
+        let clip = scrollView.contentSize
         let scale = min(clip.width / imageView.bounds.width,
                         clip.height / imageView.bounds.height)
         return allowEnlarging ? scale : min(scale, 1)
@@ -161,16 +188,30 @@ struct ImageViewerView: NSViewRepresentable {
 
         controller.scrollView = scrollView
         controller.imageView = imageView
+        scrollView.postsFrameChangedNotifications = true
+        context.coordinator.observer = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: scrollView, queue: .main
+        ) { [weak controller] _ in
+            MainActor.assumeIsolated { controller?.windowResized() }
+        }
         return scrollView
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var observer: NSObjectProtocol?
+        deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let imageView = scrollView.documentView as? NSImageView else { return }
         guard imageView.image !== controller.image else { return }
         imageView.image = controller.image
-        let size = controller.pixelSize.width > 0
-            ? controller.pixelSize
-            : (controller.image?.size ?? .zero)
+        // Size the view in points, the units NSImageView draws in. A Retina
+        // screenshot is 144 dpi, so its pixel size is twice its point size and
+        // the picture filled only a quarter of a pixel-sized frame.
+        let size = controller.image?.size ?? .zero
         imageView.frame = NSRect(origin: .zero, size: size)
         // The clip view has no size until the next layout pass.
         DispatchQueue.main.async { controller.fitOnOpen() }
