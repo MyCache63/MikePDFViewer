@@ -42,7 +42,9 @@ let package = Package(
                 // App-only window management (multi-window focus reuse).
                 "OpenDocumentRegistry.swift",
                 "DocumentExporter.swift",
-                "AppLog.swift",
+                // AppLog.swift stays IN the kit: it is plain Foundation, and since
+                // v6.27.5 ImageDocumentView (a kit file) calls it.  Excluding it
+                // broke Mission Control 3's build on 2026-10-25.
                 "PerfLog.swift",
                 "WindowSleep.swift",
                 "PDFCompareService.swift",
