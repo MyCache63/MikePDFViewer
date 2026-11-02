@@ -328,7 +328,8 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showExportImages, onDismiss: { exportImagesDocument = nil }) {
                 if let document = exportImagesDocument ?? pdfDocument {
-                    ExportImagesView(document: document)
+                    ExportImagesView(document: document, baseName: exportStem,
+                                     startFolder: (openWithSourceURL ?? pdfURL)?.deletingLastPathComponent())
                 }
             }
             .sheet(isPresented: $showCompareSheet) {

@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 
 struct ExportImagesView: View {
     let document: PDFDocument
+    /// Source file name without its extension; every exported image starts with it.
+    var baseName: String = "Untitled"
+    /// Folder the picker opens in: the source file's own folder.
+    var startFolder: URL? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var format: ImageFormat = .png
     @State private var dpi: Double = 150
@@ -99,6 +103,7 @@ struct ExportImagesView: View {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.prompt = "Export Here"
+        panel.directoryURL = startFolder
         guard panel.runModal() == .OK, let folder = panel.url else { return }
 
         isExporting = true
@@ -109,26 +114,29 @@ struct ExportImagesView: View {
         let total = end - start
         let dpiValue = CGFloat(dpi)
         let imageFormat = format
+        let names = Self.fileNames(base: baseName, pages: start..<end,
+                                   ext: format == .png ? "png" : "jpg", in: folder)
 
         DispatchQueue.global(qos: .userInitiated).async {
+            var failures: [String] = []
             for i in start..<end {
                 guard let page = document.page(at: i) else { continue }
 
                 let data: Data?
-                let ext: String
                 switch imageFormat {
-                case .png:
-                    data = PageRenderer.renderPageToPNG(page, dpi: dpiValue)
-                    ext = "png"
-                case .jpeg:
-                    data = PageRenderer.renderPageToJPEG(page, dpi: dpiValue)
-                    ext = "jpg"
+                case .png:  data = PageRenderer.renderPageToPNG(page, dpi: dpiValue)
+                case .jpeg: data = PageRenderer.renderPageToJPEG(page, dpi: dpiValue)
                 }
 
-                if let data {
-                    let filename = "page_\(String(format: "%04d", i + 1)).\(ext)"
-                    let fileURL = folder.appendingPathComponent(filename)
-                    try? data.write(to: fileURL)
+                let fileURL = folder.appendingPathComponent(names[i - start])
+                do {
+                    guard let data else { throw CocoaError(.fileWriteUnknown) }
+                    // withoutOverwriting: an existing file is never replaced.
+                    try data.write(to: fileURL, options: .withoutOverwriting)
+                    AppLog.write("export image: wrote \(fileURL.lastPathComponent)")
+                } catch {
+                    failures.append(fileURL.lastPathComponent)
+                    AppLog.write("export image: FAILED \(fileURL.lastPathComponent): \(error.localizedDescription)")
                 }
 
                 DispatchQueue.main.async {
@@ -138,8 +146,38 @@ struct ExportImagesView: View {
 
             DispatchQueue.main.async {
                 isExporting = false
-                dismiss()
+                if failures.isEmpty {
+                    dismiss()
+                } else {
+                    error = "Couldn't write \(failures.count) image(s): \(failures.prefix(3).joined(separator: ", "))"
+                }
             }
+        }
+    }
+
+    /// "<source>_2026-11-02_14-32-07.53.png", plus "_p03" when more than one
+    /// page is exported. A prior export used plain "page_0001.png" and replaced
+    /// whatever was already in the folder (2 Nov 2026). Colons aren't allowed
+    /// in Finder names, so the time uses dashes. If a name is somehow taken, a
+    /// counter is added; nothing is ever overwritten.
+    static func fileNames(base: String, pages: Range<Int>, ext: String, in folder: URL) -> [String] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss.SS"
+        let stamp = formatter.string(from: Date())
+        let digits = max(2, String(pages.upperBound).count)
+        return pages.map { index in
+            var stem = "\(base)_\(stamp)"
+            if pages.count > 1 {
+                stem += "_p" + String(format: "%0\(digits)d", index + 1)
+            }
+            var name = "\(stem).\(ext)"
+            var counter = 2
+            while FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path) {
+                name = "\(stem)-\(counter).\(ext)"
+                counter += 1
+            }
+            return name
         }
     }
 }
